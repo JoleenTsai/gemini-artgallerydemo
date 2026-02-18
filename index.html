@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Art Gallery - Thin Metal Fixtures</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+        canvas { display: block; }
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #333;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            cursor: pointer;
+            z-index: 10;
+        }
+        h1 { margin-top: 0; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
+        p { font-size: 14px; color: #666; }
+        .key { display: inline-block; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div id="instructions">
+        <h1>The Gallery</h1>
+        <p>Click to Enter</p>
+        <p>Move: <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> &nbsp;|&nbsp; Look: <b>Mouse</b> &nbsp;|&nbsp; Zoom: <b>Scroll</b></p>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        const ROOM_WIDTH = 30;
+        const ROOM_LENGTH = 60;
+        const ROOM_HEIGHT = 12;
+        
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+        scene.fog = new THREE.Fog(0xffffff, 20, 100); 
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.7, 25); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.3; 
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new PointerLockControls(camera, document.body);
+        const instructions = document.getElementById('instructions');
+        instructions.addEventListener('click', function () { controls.lock(); });
+        controls.addEventListener('lock', function () { instructions.style.display = 'none'; });
+        controls.addEventListener('unlock', function () { instructions.style.display = 'block'; });
+
+        document.addEventListener('wheel', (event) => {
+            if (controls.isLocked) {
+                const zoomSpeed = 0.05;
+                camera.fov += event.deltaY * zoomSpeed;
+                if(camera.fov < 20) camera.fov = 20;
+                if(camera.fov > 75) camera.fov = 75;
+                camera.updateProjectionMatrix();
+            }
+        });
+
+        // --- Lighting ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 0.8);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffffff, 3.5);
+        sunLight.position.set(-25, 60, -15); 
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 4096;
+        sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 200;
+        sunLight.shadow.camera.left = -50;
+        sunLight.shadow.camera.right = 50;
+        sunLight.shadow.camera.top = 50;
+        sunLight.shadow.camera.bottom = -50;
+        sunLight.shadow.bias = -0.0002;
+        scene.add(sunLight);
+
+        // --- Materials ---
+        const texLoader = new THREE.TextureLoader();
+        
+        const createWoodenBoardTexture = () => {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#e3c099'; ctx.fillRect(0,0,512,512);
+            const plankCount = 8; const plankH = 512 / plankCount;
+            for(let i=0; i<plankCount; i++) {
+                const y = i * plankH;
+                ctx.fillStyle = (i % 2 === 0) ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)'; ctx.fillRect(0, y, 512, plankH);
+                ctx.fillStyle = 'rgba(139, 90, 43, 0.2)';
+                for(let j=0; j<400; j++) { const x = Math.random() * 512; const w = Math.random() * 80 + 20; const h = Math.random() * 2 + 1; const yOff = Math.random() * plankH; ctx.fillRect(x, y + yOff, w, h); }
+                ctx.fillStyle = '#8a6642'; ctx.fillRect(0, y, 512, 2);
+            }
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const createFleckedMarbleTexture = () => {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,512,512);
+            ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
+            for(let i=0; i<10; i++) { ctx.beginPath(); ctx.moveTo(Math.random()*512, Math.random()*512); ctx.bezierCurveTo(Math.random()*512, Math.random()*512, Math.random()*512, Math.random()*512, Math.random()*512, Math.random()*512); ctx.stroke(); }
+            for(let i=0; i<6000; i++) { const greyVal = Math.floor(Math.random() * 100) + 80; ctx.fillStyle = `rgba(${greyVal}, ${greyVal}, ${greyVal}, ${Math.random() * 0.6 + 0.2})`; const x = Math.random() * 512; const y = Math.random() * 512; const size = Math.random() * 2.5 + 0.5; ctx.fillRect(x, y, size, size); }
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const woodTexture = createWoodenBoardTexture(); 
+        woodTexture.wrapS = woodTexture.wrapT = THREE.RepeatWrapping; woodTexture.repeat.set(8, 16); 
+        const marbleTexture = createFleckedMarbleTexture();
+        marbleTexture.wrapS = marbleTexture.wrapT = THREE.RepeatWrapping; marbleTexture.repeat.set(2, 2);
+
+        const floorMat = new THREE.MeshStandardMaterial({ map: woodTexture, roughness: 0.5, metalness: 0 });
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.4 });
+        const canvasMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+        const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: 0, transmission: 1.0, transparent: true, side: THREE.DoubleSide });
+        const marbleMat = new THREE.MeshStandardMaterial({ map: marbleTexture, roughness: 0.1, metalness: 0.1 });
+        
+        // UPDATED MATERIAL: Thin Sleek Metal
+        const lanternMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.9, roughness: 0.2 }); 
+        
+        const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0 });
+        const beamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }); 
+        const ropeMat = new THREE.MeshStandardMaterial({ color: 0x800000, roughness: 0.9 });
+        const stanchionMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.2 });
+
+        // --- Architecture ---
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_LENGTH), floorMat);
+        floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+        const wallGroup = new THREE.Group();
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT + 1, 1), wallMat);
+        backWall.position.set(0, (ROOM_HEIGHT+1)/2, -ROOM_LENGTH/2); backWall.receiveShadow = true; wallGroup.add(backWall);
+        const frontWall = new THREE.Mesh(new THREE.BoxGeometry(ROOM_WIDTH, ROOM_HEIGHT + 1, 1), wallMat);
+        frontWall.position.set(0, (ROOM_HEIGHT+1)/2, ROOM_LENGTH/2); frontWall.receiveShadow = true; wallGroup.add(frontWall);
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT + 1, ROOM_LENGTH), wallMat);
+        leftWall.position.set(-ROOM_WIDTH/2, (ROOM_HEIGHT+1)/2, 0); leftWall.receiveShadow = true; wallGroup.add(leftWall);
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT + 1, ROOM_LENGTH), wallMat);
+        rightWall.position.set(ROOM_WIDTH/2, (ROOM_HEIGHT+1)/2, 0); rightWall.receiveShadow = true; wallGroup.add(rightWall);
+        scene.add(wallGroup);
+
+        // --- CEILING ---
+        const ceilingGroup = new THREE.Group();
+        const beamDepth = 0.8; const beamWidth = 0.6; const mainBeamSpacing = 6;
+        const skylightWidth = 5; const centerCorridorWidth = 6;
+        const transverseGeo = new THREE.BoxGeometry(ROOM_WIDTH, beamDepth, beamWidth);
+        for(let z = -ROOM_LENGTH/2; z <= ROOM_LENGTH/2; z += mainBeamSpacing) {
+            const beam = new THREE.Mesh(transverseGeo, beamMat);
+            beam.position.set(0, ROOM_HEIGHT - beamDepth/2, z);
+            beam.castShadow = true; beam.receiveShadow = true; ceilingGroup.add(beam);
+        }
+        const longBeamGeo = new THREE.BoxGeometry(beamWidth, beamDepth, ROOM_LENGTH);
+        const xInner = centerCorridorWidth/2 + beamWidth/2; const xOuter = xInner + skylightWidth;
+        [xInner, -xInner, xOuter, -xOuter].forEach(x => {
+            const beam = new THREE.Mesh(longBeamGeo, beamMat);
+            beam.position.set(x, ROOM_HEIGHT - beamDepth/2, 0);
+            beam.castShadow = true; beam.receiveShadow = true; ceilingGroup.add(beam);
+        });
+        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+        const centerRoof = new THREE.Mesh(new THREE.PlaneGeometry(centerCorridorWidth, ROOM_LENGTH), ceilingMat);
+        centerRoof.rotation.x = Math.PI/2; centerRoof.position.set(0, ROOM_HEIGHT, 0); centerRoof.receiveShadow = true; ceilingGroup.add(centerRoof);
+        const outerWidth = (ROOM_WIDTH/2) - xOuter;
+        const leftRoof = new THREE.Mesh(new THREE.PlaneGeometry(outerWidth, ROOM_LENGTH), ceilingMat);
+        leftRoof.rotation.x = Math.PI/2; leftRoof.position.set(-(xOuter + outerWidth/2), ROOM_HEIGHT, 0); leftRoof.receiveShadow = true; ceilingGroup.add(leftRoof);
+        const rightRoof = new THREE.Mesh(new THREE.PlaneGeometry(outerWidth, ROOM_LENGTH), ceilingMat);
+        rightRoof.rotation.x = Math.PI/2; rightRoof.position.set((xOuter + outerWidth/2), ROOM_HEIGHT, 0); rightRoof.receiveShadow = true; ceilingGroup.add(rightRoof);
+        const skylightGeo = new THREE.PlaneGeometry(skylightWidth, ROOM_LENGTH);
+        const leftGlass = new THREE.Mesh(skylightGeo, glassMat);
+        leftGlass.rotation.x = Math.PI/2; leftGlass.position.set(-(xInner + skylightWidth/2), ROOM_HEIGHT, 0); ceilingGroup.add(leftGlass);
+        const rightGlass = new THREE.Mesh(skylightGeo, glassMat);
+        rightGlass.rotation.x = Math.PI/2; rightGlass.position.set((xInner + skylightWidth/2), ROOM_HEIGHT, 0); ceilingGroup.add(rightGlass);
+        scene.add(ceilingGroup);
+
+        // --- UPDATED: Thin Metal Fixtures ---
+        const lightsGroup = new THREE.Group();
+        const lanternSpacing = mainBeamSpacing * 2; 
+        function createLantern(zPos) {
+            const fixture = new THREE.Group();
+            const attachY = ROOM_HEIGHT - beamDepth; 
+            const dropLen = 4.5; 
+
+            // 1. Very thin metal rod
+            const rodRadius = 0.015;
+            const rod = new THREE.Mesh(new THREE.CylinderGeometry(rodRadius, rodRadius, dropLen), lanternMat);
+            rod.position.y = attachY - (dropLen/2); 
+            fixture.add(rod);
+
+            // 2. Small minimal socket
+            const socketHeight = 0.1;
+            const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, socketHeight), lanternMat);
+            socket.position.y = attachY - dropLen - (socketHeight/2);
+            fixture.add(socket);
+
+            // 3. Bare Bulb
+            const bulbRadius = 0.3;
+            const bulb = new THREE.Mesh(new THREE.SphereGeometry(bulbRadius, 32, 32), bulbMat);
+            bulb.position.y = attachY - dropLen - socketHeight - (bulbRadius*0.8); 
+            fixture.add(bulb);
+
+            const pointLight = new THREE.PointLight(0xffffff, 0.8, 15);
+            pointLight.position.set(0, attachY - dropLen - 0.5, 0); 
+            fixture.add(pointLight);
+            
+            fixture.position.z = zPos;
+            return fixture;
+        }
+        for(let z = -ROOM_LENGTH/2 + mainBeamSpacing; z < ROOM_LENGTH/2; z += lanternSpacing) { lightsGroup.add(createLantern(z)); }
+        scene.add(lightsGroup);
+
+        // --- Wall Canvases ---
+        function createWallCanvas(x, y, z, yRotation) {
+            const group = new THREE.Group();
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(3.5, 2.5, 0.1), frameMat);
+            frame.castShadow = true; group.add(frame);
+            const canvas = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 0.02), canvasMat);
+            canvas.position.z = 0.06; group.add(canvas);
+            group.position.set(x, y, z); group.rotation.y = yRotation; scene.add(group);
+        }
+        for (let zPos = -25; zPos <= 25; zPos += 10) { createWallCanvas(-ROOM_WIDTH/2+0.6, 3, zPos, Math.PI/2); createWallCanvas(ROOM_WIDTH/2-0.6, 3, zPos, -Math.PI/2); }
+        createWallCanvas(-6, 3, -ROOM_LENGTH/2+0.6, 0); createWallCanvas(0, 3, -ROOM_LENGTH/2+0.6, 0); createWallCanvas(6, 3, -ROOM_LENGTH/2+0.6, 0);
+
+        // --- Statue & Fence ---
+        const centralGroup = new THREE.Group(); scene.add(centralGroup);
+        const base1 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 8), marbleMat); base1.position.y = 0.2; base1.receiveShadow = true; centralGroup.add(base1);
+        const base2 = new THREE.Mesh(new THREE.BoxGeometry(5, 0.4, 7), marbleMat); base2.position.y = 0.6; base2.receiveShadow = true; centralGroup.add(base2);
+        const pedestal = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.0, 3.5), marbleMat); pedestal.position.y = 1.3; pedestal.castShadow = true; pedestal.receiveShadow = true; centralGroup.add(pedestal);
+        const sculpture = new THREE.Group(); sculpture.position.y = 1.8; 
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 2.8, 16), marbleMat); core.position.set(0, 1.4, 0.2); core.rotation.set(-Math.PI / 8, Math.PI/12, 0); core.castShadow = true; sculpture.add(core);
+        const cowl = new THREE.Mesh(new THREE.SphereGeometry(0.65, 24, 24).scale(1, 1.3, 1.6), marbleMat); cowl.position.set(0.1, 2.9, 0.6); cowl.rotation.x = -Math.PI / 5; cowl.castShadow = true; sculpture.add(cowl);
+        const twist = new THREE.Mesh(new THREE.TorusKnotGeometry(0.7, 0.2, 100, 16, 2, 3).scale(1.1, 1.8, 1.1), marbleMat); twist.position.set(0, 1.5, 0.3); twist.rotation.set(Math.PI/2.2, 0, -Math.PI/6); twist.castShadow = true; sculpture.add(twist);
+        const baseCloth = new THREE.Mesh(new THREE.SphereGeometry(1.4, 32, 16, 0, Math.PI*2, 0, Math.PI/2).scale(1.4, 0.6, 1.4), marbleMat); baseCloth.position.y = 0.1; baseCloth.castShadow = true; sculpture.add(baseCloth);
+        centralGroup.add(sculpture);
+        const fenceGroup = new THREE.Group(); const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1); const postPositions = [[-3.5, -5.5], [3.5, -5.5], [3.5, 5.5], [-3.5, 5.5]]; const posts = [];
+        postPositions.forEach(pos => { const post = new THREE.Mesh(postGeo, stanchionMat); post.position.set(pos[0], 0.5, pos[1]); post.castShadow = true; fenceGroup.add(post); posts.push(post.position.clone().add(new THREE.Vector3(0, 0.4, 0))); });
+        function createRope(startVec, endVec) { const midVec = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5); midVec.y -= 0.3; const curve = new THREE.CatmullRomCurve3([startVec, midVec, endVec]); const ropeGeo = new THREE.TubeGeometry(curve, 20, 0.04, 8, false); const rope = new THREE.Mesh(ropeGeo, ropeMat); rope.castShadow = true; fenceGroup.add(rope); }
+        createRope(posts[0], posts[1]); createRope(posts[1], posts[2]); createRope(posts[2], posts[3]); createRope(posts[3], posts[0]); scene.add(fenceGroup);
+
+        // --- Loop ---
+        const moveState = { forward: false, backward: false, left: false, right: false };
+        const velocity = new THREE.Vector3(); const direction = new THREE.Vector3();
+        const onKeyDown = (e) => { switch(e.code) { case 'ArrowUp': case 'KeyW': moveState.forward=true; break; case 'ArrowLeft': case 'KeyA': moveState.left=true; break; case 'ArrowDown': case 'KeyS': moveState.backward=true; break; case 'ArrowRight': case 'KeyD': moveState.right=true; break; }};
+        const onKeyUp = (e) => { switch(e.code) { case 'ArrowUp': case 'KeyW': moveState.forward=false; break; case 'ArrowLeft': case 'KeyA': moveState.left=false; break; case 'ArrowDown': case 'KeyS': moveState.backward=false; break; case 'ArrowRight': case 'KeyD': moveState.right=false; break; }};
+        document.addEventListener('keydown', onKeyDown); document.addEventListener('keyup', onKeyUp);
+
+        let prevTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now(); const delta = (time - prevTime) / 1000;
+            if (controls.isLocked === true) {
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                direction.z = Number(moveState.forward) - Number(moveState.backward); direction.x = Number(moveState.right) - Number(moveState.left); direction.normalize(); 
+                if (moveState.forward || moveState.backward) velocity.z -= direction.z * 100.0 * delta; if (moveState.left || moveState.right) velocity.x -= direction.x * 100.0 * delta;
+                controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
+                if(camera.position.x < -ROOM_WIDTH/2 + 2) camera.position.x = -ROOM_WIDTH/2 + 2; if(camera.position.x > ROOM_WIDTH/2 - 2) camera.position.x = ROOM_WIDTH/2 - 2; if(camera.position.z < -ROOM_LENGTH/2 + 2) camera.position.z = -ROOM_LENGTH/2 + 2; if(camera.position.z > ROOM_LENGTH/2 - 2) camera.position.z = ROOM_LENGTH/2 - 2;
+            }
+            prevTime = time; renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        animate();
+    </script>
+</body>
+</html>
