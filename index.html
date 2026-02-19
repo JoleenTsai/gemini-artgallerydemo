@@ -3,36 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Art Gallery - Thin Metal Fixtures</title>
+    <title>VR Art Gallery - Space to Pause</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
         canvas { display: block; }
-        #instructions {
+        
+        /* Updated UI: Subtle, non-blocking */
+        #ui-layer {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            user-select: none;
+        }
+        
+        .hud-text {
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            display: inline-block;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .key { 
+            display: inline-block; 
+            padding: 2px 6px; 
+            background: rgba(255,255,255,0.2); 
+            border-radius: 4px; 
+            font-weight: bold; 
+            font-size: 11px; 
+            margin: 0 2px;
+        }
+        
+        #pause-indicator {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            text-align: center;
-            color: #333;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 40px;
+            font-size: 40px;
+            color: white;
+            font-weight: 300;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            background: rgba(0,0,0,0.3);
+            padding: 20px 40px;
             border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            cursor: pointer;
-            z-index: 10;
+            backdrop-filter: blur(10px);
+            display: none; /* Hidden by default */
+            pointer-events: none;
         }
-        h1 { margin-top: 0; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; }
-        p { font-size: 14px; color: #666; }
-        .key { display: inline-block; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; font-size: 12px; }
     </style>
 </head>
 <body>
 
-    <div id="instructions">
-        <h1>The Gallery</h1>
-        <p>Click to Enter</p>
-        <p>Move: <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> &nbsp;|&nbsp; Look: <b>Mouse</b> &nbsp;|&nbsp; Zoom: <b>Scroll</b></p>
+    <div id="ui-layer">
+        <div class="hud-text">
+            <span id="status-text">Click to Walk</span> &nbsp;|&nbsp; 
+            Move: <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> &nbsp;|&nbsp; 
+            Look: <b>Mouse</b> &nbsp;|&nbsp; 
+            Pause/Release Mouse: <span class="key">SPACE</span>
+        </div>
     </div>
+
+    <div id="pause-indicator">PAUSED</div>
 
     <script type="importmap">
         {
@@ -47,10 +84,13 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+        // --- Config ---
         const ROOM_WIDTH = 30;
         const ROOM_LENGTH = 60;
         const ROOM_HEIGHT = 12;
+        const ROOF_HEIGHT = 18;
         
+        // --- Scene & Camera ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87ceeb);
         scene.fog = new THREE.Fog(0xffffff, 20, 100); 
@@ -66,12 +106,41 @@
         renderer.toneMappingExposure = 1.3; 
         document.body.appendChild(renderer.domElement);
 
+        // --- CONTROLS LOGIC (New Spacebar System) ---
         const controls = new PointerLockControls(camera, document.body);
-        const instructions = document.getElementById('instructions');
-        instructions.addEventListener('click', function () { controls.lock(); });
-        controls.addEventListener('lock', function () { instructions.style.display = 'none'; });
-        controls.addEventListener('unlock', function () { instructions.style.display = 'block'; });
+        const statusText = document.getElementById('status-text');
+        const pauseIndicator = document.getElementById('pause-indicator');
 
+        // 1. Click to Lock (Browser requirement)
+        document.addEventListener('click', function () {
+            if(!controls.isLocked) {
+                controls.lock();
+            }
+        });
+
+        // 2. Event Listeners for Lock State
+        controls.addEventListener('lock', function () {
+            statusText.innerHTML = "Walking Mode";
+            pauseIndicator.style.display = 'none';
+        });
+
+        controls.addEventListener('unlock', function () {
+            statusText.innerHTML = "Paused - Click or Press Space to Resume";
+            pauseIndicator.style.display = 'block';
+        });
+
+        // 3. Spacebar Toggle
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space') {
+                if (controls.isLocked) {
+                    controls.unlock(); // This releases the mouse
+                } else {
+                    controls.lock(); // This recaptures the mouse
+                }
+            }
+        });
+
+        // Zoom
         document.addEventListener('wheel', (event) => {
             if (controls.isLocked) {
                 const zoomSpeed = 0.05;
@@ -102,7 +171,6 @@
 
         // --- Materials ---
         const texLoader = new THREE.TextureLoader();
-        
         const createWoodenBoardTexture = () => {
             const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
             const ctx = canvas.getContext('2d');
@@ -117,7 +185,6 @@
             }
             return new THREE.CanvasTexture(canvas);
         };
-
         const createFleckedMarbleTexture = () => {
             const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
             const ctx = canvas.getContext('2d');
@@ -139,10 +206,7 @@
         const canvasMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
         const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: 0, transmission: 1.0, transparent: true, side: THREE.DoubleSide });
         const marbleMat = new THREE.MeshStandardMaterial({ map: marbleTexture, roughness: 0.1, metalness: 0.1 });
-        
-        // UPDATED MATERIAL: Thin Sleek Metal
         const lanternMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.9, roughness: 0.2 }); 
-        
         const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0 });
         const beamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }); 
         const ropeMat = new THREE.MeshStandardMaterial({ color: 0x800000, roughness: 0.9 });
@@ -195,36 +259,24 @@
         rightGlass.rotation.x = Math.PI/2; rightGlass.position.set((xInner + skylightWidth/2), ROOM_HEIGHT, 0); ceilingGroup.add(rightGlass);
         scene.add(ceilingGroup);
 
-        // --- UPDATED: Thin Metal Fixtures ---
+        // --- Fixtures ---
         const lightsGroup = new THREE.Group();
         const lanternSpacing = mainBeamSpacing * 2; 
         function createLantern(zPos) {
             const fixture = new THREE.Group();
             const attachY = ROOM_HEIGHT - beamDepth; 
             const dropLen = 4.5; 
-
-            // 1. Very thin metal rod
             const rodRadius = 0.015;
             const rod = new THREE.Mesh(new THREE.CylinderGeometry(rodRadius, rodRadius, dropLen), lanternMat);
-            rod.position.y = attachY - (dropLen/2); 
-            fixture.add(rod);
-
-            // 2. Small minimal socket
+            rod.position.y = attachY - (dropLen/2); fixture.add(rod);
             const socketHeight = 0.1;
             const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, socketHeight), lanternMat);
-            socket.position.y = attachY - dropLen - (socketHeight/2);
-            fixture.add(socket);
-
-            // 3. Bare Bulb
+            socket.position.y = attachY - dropLen - (socketHeight/2); fixture.add(socket);
             const bulbRadius = 0.3;
             const bulb = new THREE.Mesh(new THREE.SphereGeometry(bulbRadius, 32, 32), bulbMat);
-            bulb.position.y = attachY - dropLen - socketHeight - (bulbRadius*0.8); 
-            fixture.add(bulb);
-
+            bulb.position.y = attachY - dropLen - socketHeight - (bulbRadius*0.8); fixture.add(bulb);
             const pointLight = new THREE.PointLight(0xffffff, 0.8, 15);
-            pointLight.position.set(0, attachY - dropLen - 0.5, 0); 
-            fixture.add(pointLight);
-            
+            pointLight.position.set(0, attachY - dropLen - 0.5, 0); fixture.add(pointLight);
             fixture.position.z = zPos;
             return fixture;
         }
@@ -262,8 +314,22 @@
         // --- Loop ---
         const moveState = { forward: false, backward: false, left: false, right: false };
         const velocity = new THREE.Vector3(); const direction = new THREE.Vector3();
-        const onKeyDown = (e) => { switch(e.code) { case 'ArrowUp': case 'KeyW': moveState.forward=true; break; case 'ArrowLeft': case 'KeyA': moveState.left=true; break; case 'ArrowDown': case 'KeyS': moveState.backward=true; break; case 'ArrowRight': case 'KeyD': moveState.right=true; break; }};
-        const onKeyUp = (e) => { switch(e.code) { case 'ArrowUp': case 'KeyW': moveState.forward=false; break; case 'ArrowLeft': case 'KeyA': moveState.left=false; break; case 'ArrowDown': case 'KeyS': moveState.backward=false; break; case 'ArrowRight': case 'KeyD': moveState.right=false; break; }};
+        const onKeyDown = (e) => { 
+            switch(e.code) { 
+                case 'ArrowUp': case 'KeyW': moveState.forward=true; break; 
+                case 'ArrowLeft': case 'KeyA': moveState.left=true; break; 
+                case 'ArrowDown': case 'KeyS': moveState.backward=true; break; 
+                case 'ArrowRight': case 'KeyD': moveState.right=true; break; 
+            }
+        };
+        const onKeyUp = (e) => { 
+            switch(e.code) { 
+                case 'ArrowUp': case 'KeyW': moveState.forward=false; break; 
+                case 'ArrowLeft': case 'KeyA': moveState.left=false; break; 
+                case 'ArrowDown': case 'KeyS': moveState.backward=false; break; 
+                case 'ArrowRight': case 'KeyD': moveState.right=false; break; 
+            }
+        };
         document.addEventListener('keydown', onKeyDown); document.addEventListener('keyup', onKeyUp);
 
         let prevTime = performance.now();
