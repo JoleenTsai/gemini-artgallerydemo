@@ -9,7 +9,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Rubik+Dirt&family=Sedgwick+Ave+Display&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Ceviche+One&family=Creepster&family=Permanent+Marker&family=Rubik+Dirt&family=Sedgwick+Ave+Display&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="ui-layer">
@@ -62,8 +62,8 @@
         world.addBody(floorBody);
 
         // --- Three.js Setup (Dynamic Sky Colors) ---
-        const colorDay = new THREE.Color(0x87ceeb); // Bright daylight
-        const colorDark = new THREE.Color(0x050508); // Moody dark
+        const colorDay = new THREE.Color(0x87ceeb); 
+        const colorDark = new THREE.Color(0x050508); 
 
         const scene = new THREE.Scene();
         scene.background = colorDay.clone();
@@ -72,7 +72,9 @@
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.7, 25); 
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Optimized Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); 
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -90,7 +92,6 @@
         document.addEventListener('mousedown', (e) => { 
             if(!controls.isLocked) { controls.lock(); return; }
             
-            // SMASH MECHANIC
             if(e.button === 0) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
@@ -158,7 +159,7 @@
         const sunLight = new THREE.DirectionalLight(0xffffee, 3.5); 
         sunLight.position.set(-25, 60, 10); 
         sunLight.castShadow = true; 
-        sunLight.shadow.mapSize.set(4096, 4096); 
+        sunLight.shadow.mapSize.set(2048, 2048); // Optimized shadow map size
         sunLight.shadow.camera.near = 0.5; 
         sunLight.shadow.camera.far = 200; 
         sunLight.shadow.camera.left = -60; 
@@ -168,7 +169,6 @@
         sunLight.shadow.bias = -0.0005; 
         scene.add(sunLight);
 
-        // Main Room Fill Lights
         const galleryFill1 = new THREE.PointLight(0xffffff, 1.2, 50);
         galleryFill1.position.set(0, ROOM_HEIGHT - 2, 15);
         scene.add(galleryFill1);
@@ -186,6 +186,7 @@
             for(let i=0;i<8;i++){const y=i*64;ctx.fillStyle=i%2?'rgba(0,0,0,0.03)':'rgba(255,255,255,0.03)';ctx.fillRect(0,y,512,64);ctx.fillStyle='rgba(139,90,43,0.2)';for(let j=0;j<400;j++)ctx.fillRect(Math.random()*512,y+Math.random()*64,Math.random()*80+20,Math.random()*2+1);ctx.fillStyle='#8a6642';ctx.fillRect(0,y,512,2);}
             return new THREE.CanvasTexture(c);
         };
+        
         const createFleckedMarbleTexture = () => {
             const c = document.createElement('canvas'); c.width=c.height=512; const ctx=c.getContext('2d');
             ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,512,512); ctx.lineWidth=2; ctx.strokeStyle='rgba(200,200,200,0.3)';
@@ -193,71 +194,245 @@
             for(let i=0;i<6000;i++){const g=Math.floor(Math.random()*100)+80;ctx.fillStyle=`rgba(${g},${g},${g},${Math.random()*0.6+0.2})`;ctx.fillRect(Math.random()*512,Math.random()*512,Math.random()*2.5+0.5,Math.random()*2.5+0.5);}
             return new THREE.CanvasTexture(c);
         };
-        const createSplatterTexture = () => {
-            const c = document.createElement('canvas'); c.width=c.height=512; const ctx=c.getContext('2d');
-            ctx.fillStyle='#1a1a1a'; ctx.fillRect(0,0,512,512); 
-            for(let i=0;i<300;i++){ctx.fillStyle=vividColors[Math.floor(Math.random()*vividColors.length)];ctx.beginPath();const x=Math.random()*512;const y=Math.random()*512;const rad=Math.random()*30+5;ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();if(Math.random()>0.7){ctx.fillRect(x-rad/4,y,rad/2,Math.random()*100+20);}}
-            return new THREE.CanvasTexture(c);
-        };
-        
-        const createCementTexture = () => {
-            const c = document.createElement('canvas'); c.width=512; c.height=512; const ctx=c.getContext('2d');
-            ctx.fillStyle='#444444'; ctx.fillRect(0,0,512,512); 
-            for(let i=0; i<30000; i++){
-                const v = Math.floor(Math.random() * 40) - 20;
-                ctx.fillStyle = `rgba(${68+v},${68+v},${68+v},0.5)`;
-                ctx.fillRect(Math.random()*512, Math.random()*512, 2, 2);
+
+        const createGlowFloorTextures = () => {
+            const size = 1024;
+            const diffCanvas = document.createElement('canvas'); diffCanvas.width = size; diffCanvas.height = size;
+            const diffCtx = diffCanvas.getContext('2d');
+            const emCanvas = document.createElement('canvas'); emCanvas.width = size; emCanvas.height = size;
+            const emCtx = emCanvas.getContext('2d');
+
+            diffCtx.fillStyle='#1a1a1a'; diffCtx.fillRect(0,0,size,size);
+            emCtx.fillStyle='#000000'; emCtx.fillRect(0,0,size,size); 
+
+            for(let i=0; i<150; i++){ 
+                const color = vividColors[Math.floor(Math.random()*vividColors.length)];
+                const x = Math.random()*size; const y = Math.random()*size;
+                const rad = Math.random()*12 + 2;
+
+                diffCtx.fillStyle = color; diffCtx.beginPath(); diffCtx.arc(x,y,rad,0,Math.PI*2); diffCtx.fill();
+                emCtx.fillStyle = color; emCtx.beginPath(); emCtx.arc(x,y,rad,0,Math.PI*2); emCtx.fill();
+
+                if(Math.random()>0.6){
+                    const dripLen = Math.random()*60 + 10;
+                    diffCtx.fillRect(x-rad/4, y, rad/2, dripLen);
+                    emCtx.fillRect(x-rad/4, y, rad/2, dripLen);
+                }
+                for(let j=0; j<4; j++) {
+                    const dx = x + (Math.random()-0.5)*40; const dy = y + (Math.random()-0.5)*40;
+                    const dr = Math.random()*4;
+                    diffCtx.fillStyle = color; diffCtx.beginPath(); diffCtx.arc(dx,dy,dr,0,Math.PI*2); diffCtx.fill();
+                    emCtx.fillStyle = color; emCtx.beginPath(); emCtx.arc(dx,dy,dr,0,Math.PI*2); emCtx.fill();
+                }
             }
-            ctx.lineWidth = 1;
-            for(let i=0; i<30; i++) {
-                ctx.strokeStyle = `rgba(0,0,0,${Math.random()*0.3})`;
-                ctx.beginPath(); ctx.moveTo(Math.random()*512, Math.random()*512);
-                for(let j=0; j<4; j++) ctx.lineTo(Math.random()*512, Math.random()*512); ctx.stroke();
-            }
-            return new THREE.CanvasTexture(c);
+            return { diffuse: new THREE.CanvasTexture(diffCanvas), emissive: new THREE.CanvasTexture(emCanvas) };
         };
 
-        const drawSmashText = (c) => {
-            const ctx = c.getContext('2d');
-            ctx.fillStyle='#444444'; ctx.fillRect(0,0,c.width,c.height); 
+        const createGlowWallTextures = () => {
+            const size = 1024;
+            const diffCanvas = document.createElement('canvas'); diffCanvas.width = size; diffCanvas.height = size;
+            const diffCtx = diffCanvas.getContext('2d');
+            const emCanvas = document.createElement('canvas'); emCanvas.width = size; emCanvas.height = size;
+            const emCtx = emCanvas.getContext('2d');
+
+            diffCtx.fillStyle='#333333'; diffCtx.fillRect(0,0,size,size);
+            for(let i=0; i<30000; i++){
+                const v = Math.floor(Math.random() * 40) - 20;
+                diffCtx.fillStyle = `rgba(${68+v},${68+v},${68+v},0.5)`;
+                diffCtx.fillRect(Math.random()*size, Math.random()*size, 2, 2);
+            }
+            emCtx.fillStyle='#000000'; emCtx.fillRect(0,0,size,size); 
+
+            for(let i=0; i<60; i++){
+                const color = vividColors[Math.floor(Math.random()*vividColors.length)];
+                const x = Math.random()*size; const y = Math.random()*size;
+                const rad = Math.random()*15 + 3;
+
+                diffCtx.fillStyle = color; diffCtx.beginPath(); diffCtx.arc(x,y,rad,0,Math.PI*2); diffCtx.fill();
+                emCtx.fillStyle = color; emCtx.beginPath(); emCtx.arc(x,y,rad,0,Math.PI*2); emCtx.fill();
+
+                if(Math.random()>0.5){
+                    const dripLen = Math.random()*100 + 20;
+                    diffCtx.fillRect(x-rad/4, y, rad/2, dripLen);
+                    emCtx.fillRect(x-rad/4, y, rad/2, dripLen);
+                }
+            }
+            return { diffuse: new THREE.CanvasTexture(diffCanvas), emissive: new THREE.CanvasTexture(emCanvas) };
+        };
+
+        // --- MURAL WITH OVERLAPPING TEXT ---
+        const createRightWallMuralTexture = () => {
+            const width = 2048; const height = 1024;
+            const diffCanvas = document.createElement('canvas'); diffCanvas.width = width; diffCanvas.height = height;
+            const diffCtx = diffCanvas.getContext('2d');
+            const emCanvas = document.createElement('canvas'); emCanvas.width = width; emCanvas.height = height;
+            const emCtx = emCanvas.getContext('2d');
+
+            diffCtx.clearRect(0,0,width,height);
+            emCtx.clearRect(0,0,width,height);
+            
+            const neonPink = '#ff00ff'; const neonYellow = '#ffff00';
+            const sprayGreen = '#39ff14'; const sprayOrange = '#ff6600';
+            const sprayPurple = '#9d00ff'; const sprayNeonCyan = '#00ffcc';
+
+            const textX = width * 0.32; const textY = height / 2 + 140; 
+            const errX = width * 0.30; const errY = height / 2 - 180;   
+            const smileyX = width * 0.78; const smileyY = height / 2;
+            const smileyRad = height * 0.4;
+
+            const generateFX = (baseX, baseY, widthRange, count) => {
+                const drips = [];
+                const speckles = [];
+                for (let i = 0; i < count; i++) {
+                    drips.push({
+                        dx: baseX + (Math.random() - 0.5) * widthRange,
+                        dy: baseY + 50 + (Math.random() * 80),
+                        w: Math.random() * 8 + 4,
+                        h: Math.random() * 150 + 40
+                    });
+                }
+                for(let i = 0; i < count * 8; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * (widthRange * 0.6);
+                    speckles.push({
+                        sx: baseX + Math.cos(angle) * dist * 1.5,
+                        sy: baseY + Math.sin(angle) * dist * 0.6,
+                        r: Math.random() * 5 + 1
+                    });
+                }
+                return { drips, speckles };
+            };
+
+            const fx949 = generateFX(textX, textY, 800, 50);
+            const fxErrvine = generateFX(errX, errY, 900, 60);
+
+            const drawSprayPaintText = (ctx, text, x, y, color1, color2, isEmissive, fontStr, rotation, fxData, outlineColor = null) => {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(rotation);
+                ctx.font = fontStr;
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+
+                const grad = ctx.createLinearGradient(-400, 0, 400, 0);
+                grad.addColorStop(0, color1); grad.addColorStop(1, color2);
+
+                ctx.shadowBlur = isEmissive ? 80 : 15;
+                ctx.shadowColor = color1;
+                ctx.fillStyle = grad;
+                ctx.fillText(text, 0, 0);
+                
+                if (isEmissive) {
+                    ctx.shadowBlur = 40; ctx.shadowColor = color2;
+                    ctx.fillText(text, 0, 0);
+                }
+
+                if (outlineColor) {
+                    ctx.lineWidth = 15;
+                    ctx.strokeStyle = outlineColor;
+                    ctx.shadowBlur = isEmissive ? 15 : 0; 
+                    ctx.shadowColor = outlineColor;
+                    ctx.strokeText(text, 0, 0);
+                }
+
+                ctx.restore();
+
+                ctx.shadowBlur = isEmissive ? 20 : 5;
+                fxData.drips.forEach(drip => {
+                    ctx.shadowColor = (drip.dx < x) ? color1 : color2;
+                    ctx.fillStyle = (drip.dx < x) ? color1 : color2;
+                    ctx.fillRect(drip.dx, drip.dy, drip.w, drip.h);
+                    ctx.beginPath();
+                    ctx.arc(drip.dx + drip.w/2, drip.dy + drip.h, drip.w/2, 0, Math.PI*2);
+                    ctx.fill();
+                });
+                
+                ctx.shadowBlur = isEmissive ? 10 : 2;
+                fxData.speckles.forEach(sp => {
+                    ctx.fillStyle = (sp.sx < x) ? color1 : color2;
+                    ctx.beginPath(); ctx.arc(sp.sx, sp.sy, sp.r, 0, Math.PI * 2); ctx.fill();
+                });
+            };
+
+            const drawSmiley = (ctx, cx, cy, faceRad) => {
+                ctx.shadowBlur = 0; 
+                ctx.beginPath(); ctx.arc(cx, cy, faceRad, 0, Math.PI*2);
+                ctx.fillStyle = neonYellow; ctx.fill();
+                ctx.lineWidth = 25; ctx.strokeStyle = neonPink; ctx.stroke();
+
+                const drawHeart = (hx, hy, hs) => {
+                    ctx.beginPath();
+                    ctx.moveTo(hx, hy + hs*0.3);
+                    ctx.bezierCurveTo(hx - hs/2, hy - hs/2, hx - hs, hy + hs/3, hx, hy + hs);
+                    ctx.bezierCurveTo(hx + hs, hy + hs/3, hx + hs/2, hy - hs/2, hx, hy + hs*0.3);
+                    ctx.fillStyle = neonPink; ctx.fill();
+                };
+                const eyeOffX = faceRad * 0.4; const eyeOffY = faceRad * 0.2; const heartS = faceRad * 0.35;
+                drawHeart(cx - eyeOffX, cy - eyeOffY, heartS);
+                drawHeart(cx + eyeOffX, cy - eyeOffY, heartS);
+
+                ctx.beginPath(); ctx.arc(cx, cy, faceRad*0.65, 0.2*Math.PI, 0.8*Math.PI);
+                ctx.lineWidth = 25; ctx.strokeStyle = neonPink; ctx.lineCap = 'round'; ctx.stroke();
+            };
+
+            const font949 = "bold 650px 'Spartical', 'Sedgwick Ave Display', 'Permanent Marker', cursive";
+            const fontErrvine = "450px 'Ceviche One', 'Creepster', 'Rubik Dirt', cursive";
+
+            drawSprayPaintText(diffCtx, "949", textX, textY, sprayGreen, sprayOrange, false, font949, 0, fx949);
+            drawSprayPaintText(diffCtx, "ERRVINE", errX, errY, sprayPurple, sprayNeonCyan, false, fontErrvine, -0.15, fxErrvine, '#ffffff');
+            drawSmiley(diffCtx, smileyX, smileyY, smileyRad);
+
+            drawSprayPaintText(emCtx, "949", textX, textY, sprayGreen, sprayOrange, true, font949, 0, fx949);
+            drawSprayPaintText(emCtx, "ERRVINE", errX, errY, sprayPurple, sprayNeonCyan, true, fontErrvine, -0.15, fxErrvine, '#ffffff');
+            drawSmiley(emCtx, smileyX, smileyY, smileyRad);
+
+            return { diffuse: new THREE.CanvasTexture(diffCanvas), emissive: new THREE.CanvasTexture(emCanvas) };
+        };
+
+        const smashDiffCanvas = document.createElement('canvas'); smashDiffCanvas.width = 2048; smashDiffCanvas.height = 614; 
+        const smashEmCanvas = document.createElement('canvas'); smashEmCanvas.width = 2048; smashEmCanvas.height = 614; 
+
+        const drawSmashText = (diffCanvas, emCanvas) => {
+            const diffCtx = diffCanvas.getContext('2d');
+            const emCtx = emCanvas.getContext('2d');
+            
+            diffCtx.fillStyle='#333333'; diffCtx.fillRect(0,0,diffCanvas.width,diffCanvas.height); 
             for(let i=0; i<80000; i++){
                 const v = Math.floor(Math.random() * 40) - 20;
-                ctx.fillStyle = `rgba(${68+v},${68+v},${68+v},0.5)`;
-                ctx.fillRect(Math.random()*c.width, Math.random()*c.height, 3, 3);
+                diffCtx.fillStyle = `rgba(${68+v},${68+v},${68+v},0.5)`;
+                diffCtx.fillRect(Math.random()*diffCanvas.width, Math.random()*diffCanvas.height, 3, 3);
+            }
+            emCtx.fillStyle='#000000'; emCtx.fillRect(0,0,emCanvas.width,emCanvas.height); 
+            
+            diffCtx.lineCap='round'; diffCtx.lineJoin='round';
+            for(let i=0; i<20; i++){
+                diffCtx.strokeStyle = vividColors[Math.floor(Math.random()*vividColors.length)]; 
+                diffCtx.lineWidth = Math.random()*20+10;
+                diffCtx.beginPath(); diffCtx.moveTo(Math.random()*diffCanvas.width, Math.random()*diffCanvas.height);
+                for(let j=0;j<5;j++) diffCtx.lineTo(Math.random()*diffCanvas.width, Math.random()*diffCanvas.height); 
+                diffCtx.stroke();
             }
             
             const line1 = "SMASH THE"; 
             const line2 = "PARADIGM"; 
-            
-            ctx.font = "220px 'Sedgwick Ave Display', 'Rubik Dirt', Impact, sans-serif";
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            const cx = c.width / 2; const cy1 = c.height / 2 - 110; const cy2 = c.height / 2 + 130; 
+            diffCtx.font = "220px 'Sedgwick Ave Display', 'Rubik Dirt', Impact, sans-serif";
+            diffCtx.textAlign = 'center'; diffCtx.textBaseline = 'middle';
+            const cx = diffCanvas.width / 2; const cy1 = diffCanvas.height / 2 - 110; const cy2 = diffCanvas.height / 2 + 130; 
 
             const drawGraffitiLine = (txt, y) => {
-                ctx.fillStyle = '#000000'; ctx.fillText(txt, cx + 25, y + 25);
-                ctx.fillStyle = '#00ffff'; ctx.fillText(txt, cx + 12, y + 12);
-                ctx.fillStyle = '#ff00ff'; ctx.fillText(txt, cx - 12, y - 12);
-                const grad = ctx.createLinearGradient(0, y-100, 0, y+100);
+                diffCtx.fillStyle = '#000000'; diffCtx.fillText(txt, cx + 25, y + 25);
+                diffCtx.fillStyle = '#00ffff'; diffCtx.fillText(txt, cx + 12, y + 12);
+                diffCtx.fillStyle = '#ff00ff'; diffCtx.fillText(txt, cx - 12, y - 12);
+                const grad = diffCtx.createLinearGradient(0, y-100, 0, y+100);
                 grad.addColorStop(0, '#ffff00'); grad.addColorStop(0.5, '#ff3300'); grad.addColorStop(1, '#ff00ff');
-                ctx.fillStyle = grad; ctx.fillText(txt, cx, y);
-                ctx.strokeStyle = '#111111'; ctx.lineWidth = 16; ctx.strokeText(txt, cx, y);
-                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.strokeText(txt, cx-4, y-4);
+                diffCtx.fillStyle = grad; diffCtx.fillText(txt, cx, y);
+                diffCtx.strokeStyle = '#111111'; diffCtx.lineWidth = 16; diffCtx.strokeText(txt, cx, y);
+                diffCtx.strokeStyle = '#ffffff'; diffCtx.lineWidth = 4; diffCtx.strokeText(txt, cx-4, y-4);
             }
-
             drawGraffitiLine(line1, cy1); drawGraffitiLine(line2, cy2);
-
-            ctx.fillStyle = '#ff3300';
-            for(let i=0; i<40; i++) {
-                const dx = cx + (Math.random() - 0.5) * 1600; const dy = c.height/2 + (Math.random() - 0.5) * 400;
-                ctx.beginPath(); ctx.arc(dx, dy, Math.random()*15+5, 0, Math.PI*2); ctx.fill();
-                if(Math.random()>0.5) ctx.fillRect(dx-4, dy, 8, Math.random()*80+20);
-            }
-            return c;
         };
 
-        const smashCanvas = document.createElement('canvas');
-        smashCanvas.width = 2048; smashCanvas.height = 614; 
-        const smashTextTex = new THREE.CanvasTexture(drawSmashText(smashCanvas));
+        const smashTextDiffTex = new THREE.CanvasTexture(smashDiffCanvas);
+        const smashTextEmTex = new THREE.CanvasTexture(smashEmCanvas);
         
         const drawNeonGraffiti = (c) => {
             const ctx = c.getContext('2d');
@@ -323,25 +498,47 @@
         })();
 
         document.fonts.ready.then(() => {
-            drawSmashText(smashCanvas); smashTextTex.needsUpdate = true;
-            drawNeonGraffiti(neonCanvas); neonTex.needsUpdate = true;
+            drawSmashText(smashDiffCanvas, smashEmCanvas); 
+            smashTextDiffTex.needsUpdate = true;
+            smashTextEmTex.needsUpdate = true;
+            
+            drawNeonGraffiti(neonCanvas); 
+            neonTex.needsUpdate = true;
         });
+
+        const floorData = createGlowFloorTextures();
+        floorData.diffuse.wrapS = floorData.diffuse.wrapT = THREE.RepeatWrapping; floorData.diffuse.repeat.set(4,4);
+        floorData.emissive.wrapS = floorData.emissive.wrapT = THREE.RepeatWrapping; floorData.emissive.repeat.set(4,4);
+
+        const wallData = createGlowWallTextures();
+        wallData.diffuse.wrapS = wallData.diffuse.wrapT = THREE.RepeatWrapping; wallData.diffuse.repeat.set(2,2);
+        wallData.emissive.wrapS = wallData.emissive.wrapT = THREE.RepeatWrapping; wallData.emissive.repeat.set(2,2);
+
+        const rightWallMuralData = createRightWallMuralTexture();
 
         const woodTex = createWoodenBoardTexture(); woodTex.wrapS=woodTex.wrapT=THREE.RepeatWrapping; woodTex.repeat.set(8,16);
         const marbleTex = createFleckedMarbleTexture(); marbleTex.wrapS=marbleTex.wrapT=THREE.RepeatWrapping; marbleTex.repeat.set(2,2);
-        const splatterTex = createSplatterTexture(); splatterTex.wrapS=splatterTex.wrapT=THREE.RepeatWrapping; splatterTex.repeat.set(4,4);
-        const cementTex = createCementTexture(); cementTex.wrapS=cementTex.wrapT=THREE.RepeatWrapping; cementTex.repeat.set(2,2);
         
         const materials = {
             floorMain: new THREE.MeshStandardMaterial({map:woodTex, roughness:0.5}),
-            floorSmash: new THREE.MeshStandardMaterial({map:splatterTex, roughness:0.8, metalness:0.1}),
+            floorSmash: new THREE.MeshStandardMaterial({
+                map: floorData.diffuse, emissiveMap: floorData.emissive, emissive: 0xffffff, emissiveIntensity: 2.5, roughness: 0.8, metalness: 0.1
+            }),
             wallWhite: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.4}), 
-            wallCement: new THREE.MeshStandardMaterial({map:cementTex, roughness:0.9, metalness:0.1}),
-            wallSmashText: new THREE.MeshStandardMaterial({map:smashTextTex, roughness:0.9, metalness:0.1}),
+            wallCement: new THREE.MeshStandardMaterial({
+                map: wallData.diffuse, emissiveMap: wallData.emissive, emissive: 0xffffff, emissiveIntensity: 2.5, roughness: 0.9, metalness: 0.1
+            }),
+            muralSmiley: new THREE.MeshStandardMaterial({
+                map: rightWallMuralData.diffuse, emissiveMap: rightWallMuralData.emissive, emissive: 0xffffff, emissiveIntensity: 2.5, roughness: 0.9, metalness: 0.1, transparent: true
+            }),
+            wallSmashText: new THREE.MeshStandardMaterial({
+                map: smashTextDiffTex, emissiveMap: smashTextEmTex, emissive: 0xffffff, emissiveIntensity: 2.5, roughness: 0.9, metalness: 0.1
+            }),
             neonSign: new THREE.MeshStandardMaterial({
                 map: neonTex, emissiveMap: neonTex, emissive: 0xffffff, emissiveIntensity: 1.5, roughness: 0.2, metalness: 0.8
             }),
             ceiling: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6}), 
+            
             frame: new THREE.MeshStandardMaterial({color:0x333333, roughness:0.4}),
             glass: new THREE.MeshPhysicalMaterial({color:0xffffff, roughness:0.1, transmission:0.9, transparent:true, side:THREE.DoubleSide}),
             marble: new THREE.MeshStandardMaterial({map:marbleTex, roughness:0.1, metalness:0.1}),
@@ -359,9 +556,9 @@
             screenBars: new THREE.MeshStandardMaterial({map: texBars, roughness: 0.2, metalness: 0.8, emissiveMap: texBars, emissive: 0xffffff, emissiveIntensity: 0.7}),
             screenOff: new THREE.MeshStandardMaterial({color: 0x050505, roughness: 0.1, metalness: 0.9}),
 
-            bottleGreen: new THREE.MeshPhysicalMaterial({color: 0x00ff00, roughness: 0.1, transmission: 1, transparent: true, thickness: 0.05}),
-            bottleBrown: new THREE.MeshPhysicalMaterial({color: 0x8b4513, roughness: 0.1, transmission: 1, transparent: true, thickness: 0.05}),
-            bottleClear: new THREE.MeshPhysicalMaterial({color: 0xe0f7fa, roughness: 0.1, transmission: 1, transparent: true, thickness: 0.05})
+            bottleGreen: new THREE.MeshStandardMaterial({color: 0x00ff00, roughness: 0.1, transparent: true, opacity: 0.6, metalness: 0.6}),
+            bottleBrown: new THREE.MeshStandardMaterial({color: 0x8b4513, roughness: 0.1, transparent: true, opacity: 0.6, metalness: 0.6}),
+            bottleClear: new THREE.MeshStandardMaterial({color: 0xe0f7fa, roughness: 0.1, transparent: true, opacity: 0.6, metalness: 0.6})
         };
 
         // --- MAIN ROOM ARCHITECTURE ---
@@ -380,7 +577,7 @@
         const doorLintelW = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallWhite); doorLintelW.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, whiteZ); doorLintelW.receiveShadow=true; doorLintelW.castShadow=true; mainWallGroup.add(doorLintelW);
         scene.add(mainWallGroup);
 
-        // --- MAIN ROOM CEILING ---
+        // --- ALL-SKYLIGHT MAIN ROOM CEILING ---
         const ceilingGroup = new THREE.Group();
         const beamDepth = 0.8; const beamWidth = 0.6; const mainBeamSpacing = 6;
         const skylightWidth = 5; const centerCorridorWidth = 6;
@@ -395,14 +592,11 @@
             const beam = new THREE.Mesh(longBeamGeo, materials.beam); beam.position.set(x, ROOM_HEIGHT - beamDepth/2, 0); beam.castShadow=true; beam.receiveShadow=true; ceilingGroup.add(beam);
         });
 
-        const centerRoof = new THREE.Mesh(new THREE.BoxGeometry(centerCorridorWidth, 1, MAIN_ROOM_L), materials.ceiling); centerRoof.position.set(0, ROOM_HEIGHT+0.5, 0); centerRoof.receiveShadow=true; centerRoof.castShadow=true; ceilingGroup.add(centerRoof);
-        const outerWidth = (MAIN_ROOM_W/2) - xOuter;
-        const leftRoof = new THREE.Mesh(new THREE.BoxGeometry(outerWidth, 1, MAIN_ROOM_L), materials.ceiling); leftRoof.position.set(-(xOuter + outerWidth/2), ROOM_HEIGHT+0.5, 0); leftRoof.receiveShadow=true; leftRoof.castShadow=true; ceilingGroup.add(leftRoof);
-        const rightRoof = new THREE.Mesh(new THREE.BoxGeometry(outerWidth, 1, MAIN_ROOM_L), materials.ceiling); rightRoof.position.set((xOuter + outerWidth/2), ROOM_HEIGHT+0.5, 0); rightRoof.receiveShadow=true; rightRoof.castShadow=true; ceilingGroup.add(rightRoof);
+        const fullSkylightGlass = new THREE.Mesh(new THREE.PlaneGeometry(MAIN_ROOM_W, MAIN_ROOM_L), materials.glass);
+        fullSkylightGlass.rotation.x = Math.PI/2; 
+        fullSkylightGlass.position.set(0, ROOM_HEIGHT, 0); 
+        ceilingGroup.add(fullSkylightGlass);
         
-        const skylightGeo = new THREE.PlaneGeometry(skylightWidth, MAIN_ROOM_L);
-        const leftGlass = new THREE.Mesh(skylightGeo, materials.glass); leftGlass.rotation.x = Math.PI/2; leftGlass.position.set(-(xInner + skylightWidth/2), ROOM_HEIGHT, 0); ceilingGroup.add(leftGlass);
-        const rightGlass = new THREE.Mesh(skylightGeo, materials.glass); rightGlass.rotation.x = Math.PI/2; rightGlass.position.set((xInner + skylightWidth/2), ROOM_HEIGHT, 0); ceilingGroup.add(rightGlass);
         scene.add(ceilingGroup);
 
         // --- THIN METAL FIXTURES ---
@@ -460,6 +654,13 @@
         const sWallL = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallL.position.set(-SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallL.receiveShadow=true; sWallL.castShadow=true; smashGroup.add(sWallL);
         const sWallR = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallR.position.set(SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallR.receiveShadow=true; sWallR.castShadow=true; smashGroup.add(sWallR);
         
+        // GIANT RIGHT WALL MURAL
+        const rightWallMural = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), materials.muralSmiley);
+        rightWallMural.position.set(SMASH_ROOM_W/2 - 0.51, ROOM_HEIGHT/2, SMASH_Z);
+        rightWallMural.rotation.y = -Math.PI / 2;
+        rightWallMural.receiveShadow = true;
+        smashGroup.add(rightWallMural);
+
         const sWallB_Mats = [ materials.wallCement, materials.wallCement, materials.wallCement, materials.wallCement, materials.wallSmashText, materials.wallCement ];
         const sWallB = new THREE.Mesh(new THREE.BoxGeometry(SMASH_ROOM_W, ROOM_HEIGHT, 1), sWallB_Mats); sWallB.position.set(0, ROOM_HEIGHT/2, SMASH_Z - SMASH_ROOM_L/2); sWallB.receiveShadow=true; sWallB.castShadow=true; smashGroup.add(sWallB);
         
@@ -475,20 +676,21 @@
         smashCeiling.receiveShadow = true;
         smashGroup.add(smashCeiling);
 
-        // --- ADDING MORE HANGING NEON LIGHTS ---
+        // --- OPTIMIZED HANGING NEON LIGHTS ---
         function createNeonLight(x, z, colorHex, rotY) {
             const fixture = new THREE.Group();
             const dropLen = 2.5; 
             const attachY = ROOM_HEIGHT - 0.1; 
             const tubeY = attachY - dropLen;
-            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 6, 16), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 3.0, roughness: 0.1, metalness: 0.1 }));
+            
+            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6, 16), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 4.0, roughness: 0.1, metalness: 0.1 }));
             tube.rotation.z = Math.PI / 2; tube.position.y = tubeY; fixture.add(tube);
 
             const cableMat = new THREE.MeshStandardMaterial({color: 0x111111, metalness: 0.8});
             const cableL = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), cableMat); cableL.position.set(-2.5, tubeY + dropLen/2, 0); fixture.add(cableL);
             const cableR = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), cableMat); cableR.position.set(2.5, tubeY + dropLen/2, 0); fixture.add(cableR);
-
-            const light = new THREE.PointLight(colorHex, 2.5, 25); light.position.set(0, tubeY, 0); fixture.add(light);
+            
+            // REMOVED INDIVIDUAL POINTLIGHT TO SAVE FPS
             fixture.position.set(x, 0, z); fixture.rotation.y = rotY; return fixture;
         }
 
@@ -501,44 +703,49 @@
         smashGroup.add(createNeonLight(8, SMASH_Z + 8, 0x00ffff, -Math.PI / 8));   
         smashGroup.add(createNeonLight(0, SMASH_Z + 14, 0x0044ff, 0));             
 
-        // --- NEW: NEON WALL SCONCES (Flooding the floor) ---
+        // --- OPTIMIZED NEON WALL SCONCES ---
         function createNeonSconce(x, y, z, rotY, colorHex) {
             const fixture = new THREE.Group();
             
-            // Wall Backing Plate
             const plate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.0, 0.1), materials.frame);
             fixture.add(plate);
 
-            // Vertical Neon Tube
             const tubeMat = new THREE.MeshStandardMaterial({
-                color: colorHex, emissive: colorHex, emissiveIntensity: 3.5, roughness: 0.1, metalness: 0.1
+                color: colorHex, emissive: colorHex, emissiveIntensity: 4.5, roughness: 0.1, metalness: 0.1
             });
-            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.5, 16), tubeMat);
-            tube.position.set(0, 0, 0.15); // stick out slightly
+            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 3.5, 16), tubeMat);
+            tube.position.set(0, 0, 0.15); 
             fixture.add(tube);
-
-            // Light positioned slightly away from wall and pointing downward to flood the floor
-            const light = new THREE.PointLight(colorHex, 3.5, 35);
-            light.position.set(0, -1.5, 1.5); 
-            fixture.add(light);
-
+            
+            // REMOVED INDIVIDUAL POINTLIGHT TO SAVE FPS
             fixture.position.set(x, y, z);
             fixture.rotation.y = rotY;
             smashGroup.add(fixture);
         }
 
-        const sconceY = 3.5; // Mount height
+        const sconceY = 3.5; 
         const halfW = SMASH_ROOM_W / 2;
 
-        // Left Wall Sconces (Facing Inward)
-        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z - 12, Math.PI / 2, 0xff00ff); // Hot Pink
-        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z,      Math.PI / 2, 0x00ffff); // Cyan
-        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z + 12, Math.PI / 2, 0x8800ff); // Purple
+        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z - 12, Math.PI / 2, 0xff00ff); 
+        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z,      Math.PI / 2, 0x00ffff); 
+        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z + 12, Math.PI / 2, 0x8800ff); 
 
-        // Right Wall Sconces (Facing Inward)
-        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z - 12, -Math.PI / 2, 0xff8800); // Orange
-        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z,      -Math.PI / 2, 0x00ff00); // Lime Green
-        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z + 12, -Math.PI / 2, 0x00ffff); // Cyan
+        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z - 12, -Math.PI / 2, 0xff8800); 
+        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z,      -Math.PI / 2, 0x00ff00); 
+        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z + 12, -Math.PI / 2, 0x00ffff); 
+
+        // --- NEW: GLOBAL SMASH ROOM LIGHTS (Replaces the 14 removed point lights) ---
+        const smashGlobalLight1 = new THREE.PointLight(0xff00ff, 2.5, 50);
+        smashGlobalLight1.position.set(-10, 8, SMASH_Z);
+        smashGroup.add(smashGlobalLight1);
+
+        const smashGlobalLight2 = new THREE.PointLight(0x00ffcc, 2.5, 50);
+        smashGlobalLight2.position.set(10, 8, SMASH_Z);
+        smashGroup.add(smashGlobalLight2);
+        
+        const smashGlobalLight3 = new THREE.PointLight(0xffff00, 2.0, 40);
+        smashGlobalLight3.position.set(0, 8, SMASH_Z - 10);
+        smashGroup.add(smashGlobalLight3);
 
         scene.add(smashGroup);
 
@@ -556,7 +763,11 @@
             if (eulerRot) obj3D.rotation.set(eulerRot.x, eulerRot.y, eulerRot.z);
             
             obj3D.traverse((child) => {
-                if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+                if (child.isMesh) { 
+                    // OPTIMIZATION: Removed castShadow/receiveShadow from physics debris to save draw calls
+                    // child.castShadow = true; 
+                    // child.receiveShadow = true; 
+                }
             });
             scene.add(obj3D);
             
@@ -574,6 +785,7 @@
         // Ceramic Statues
         function createCurvedStatue(x, z) {
             const ped = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 2.5), materials.wallCement);
+            ped.castShadow = true; ped.receiveShadow = true; // Keep shadows for base pedestals
             registerPhysicsPieceGroup(ped, new CANNON.Box(new CANNON.Vec3(1.25, 0.5, 1.25)), 0, new THREE.Vector3(x, 0.5, z));
 
             let currY = 1.0;
@@ -595,6 +807,7 @@
 
         function createFacetedStatue(x, z) {
             const ped = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), materials.wallCement);
+            ped.castShadow = true; ped.receiveShadow = true;
             registerPhysicsPieceGroup(ped, new CANNON.Box(new CANNON.Vec3(1, 0.5, 1)), 0, new THREE.Vector3(x, 0.5, z));
 
             let currY = 1.0;
@@ -611,6 +824,7 @@
         
         function createBalancedStatue(x, z) {
             const ped = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 2.5), materials.wallCement);
+            ped.castShadow = true; ped.receiveShadow = true;
             registerPhysicsPieceGroup(ped, new CANNON.Box(new CANNON.Vec3(1.25, 0.5, 1.25)), 0, new THREE.Vector3(x, 0.5, z));
 
             let currY = 1.0;
@@ -666,7 +880,7 @@
         }
 
 
-        // --- CORNER CLUMPED E-WASTE SCATTER ---
+        // --- CORNER CLUMPED E-WASTE SCATTER (OPTIMIZED SPACING) ---
         const corners = [
             { cx: -15, cz: SMASH_Z - 15 }, 
             { cx:  15, cz: SMASH_Z - 15 }, 
@@ -675,15 +889,15 @@
         ];
 
         corners.forEach(corner => {
-            for (let x = -4; x <= 4; x += 1.8) {
-                for (let z = -4; z <= 4; z += 1.8) {
-                    
-                    if (Math.random() > 0.8) continue;
-
+            // Increased step size to reduce total object count
+            for (let x = -4; x <= 4; x += 2.5) {
+                for (let z = -4; z <= 4; z += 2.5) {
+                    if (Math.random() > 0.6) continue;
                     const px = corner.cx + x + (Math.random() - 0.5);
                     const pz = corner.cz + z + (Math.random() - 0.5);
                     
-                    const stackCount = Math.floor(Math.random() * 4) + 2; 
+                    // Reduced max stack height to 2
+                    const stackCount = Math.floor(Math.random() * 2) + 1; 
                     let currentY = 0;
 
                     for (let k = 0; k < stackCount; k++) {
@@ -713,7 +927,7 @@
         });
 
 
-        // --- HANGING GLASS BOTTLES ---
+        // --- HANGING GLASS BOTTLES (Optimized Materials & Count) ---
         function createHangingBottle(x, z, dropLen) {
             const attachY = ROOM_HEIGHT; 
             const bottleY = attachY - dropLen;
@@ -728,22 +942,34 @@
             const mats = [materials.bottleGreen, materials.bottleBrown, materials.bottleClear];
             const bMat = mats[Math.floor(Math.random() * mats.length)];
 
-            const bBase = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.4, 16), bMat);
+            const bBase = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.8, 16), bMat);
             bGroup.add(bBase);
-            const bNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.12, 0.2, 16), bMat);
-            bNeck.position.y = 0.3; bGroup.add(bNeck);
-            const bTop = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.15, 16), bMat);
-            bTop.position.y = 0.475; bGroup.add(bTop);
+            const bNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.24, 0.4, 16), bMat);
+            bNeck.position.y = 0.6; bGroup.add(bNeck);
+            const bTop = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.3, 16), bMat);
+            bTop.position.y = 0.95; bGroup.add(bTop);
 
-            registerPhysicsPieceGroup(bGroup, new CANNON.Box(new CANNON.Vec3(0.12, 0.35, 0.12)), 0.5, new THREE.Vector3(x, bottleY, z));
+            registerPhysicsPieceGroup(bGroup, new CANNON.Box(new CANNON.Vec3(0.24, 0.7, 0.24)), 1.0, new THREE.Vector3(x, bottleY, z));
         }
 
-        for(let i=0; i < 30; i++) {
+        // Reduced bottle count from 30 to 15
+        for(let i=0; i < 15; i++) {
             const hx = (Math.random() - 0.5) * (SMASH_ROOM_W - 4);
             const hz = SMASH_Z + (Math.random() - 0.5) * (SMASH_ROOM_L - 4);
             const drop = 2 + Math.random() * 6; 
             createHangingBottle(hx, hz, drop);
         }
+
+        // --- GLOBAL BOTTLE SPOTLIGHTS (Removed the 30 individual ones) ---
+        const bottleAreaLight1 = new THREE.SpotLight(0x00ffcc, 4.0, 40, Math.PI/4, 0.5, 1);
+        bottleAreaLight1.position.set(SMASH_ROOM_W/4, ROOM_HEIGHT - 0.5, SMASH_Z);
+        bottleAreaLight1.target.position.set(SMASH_ROOM_W/4, 0, SMASH_Z);
+        scene.add(bottleAreaLight1); scene.add(bottleAreaLight1.target);
+
+        const bottleAreaLight2 = new THREE.SpotLight(0xff00ff, 4.0, 40, Math.PI/4, 0.5, 1);
+        bottleAreaLight2.position.set(-SMASH_ROOM_W/4, ROOM_HEIGHT - 0.5, SMASH_Z);
+        bottleAreaLight2.target.position.set(-SMASH_ROOM_W/4, 0, SMASH_Z);
+        scene.add(bottleAreaLight2); scene.add(bottleAreaLight2.target);
 
         // --- Loop ---
         const clock = new THREE.Clock();
