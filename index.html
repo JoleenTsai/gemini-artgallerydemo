@@ -61,10 +61,13 @@
         floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
         world.addBody(floorBody);
 
-        // --- Three.js Setup ---
+        // --- Three.js Setup (Dynamic Sky Colors) ---
+        const colorDay = new THREE.Color(0x87ceeb); // Bright daylight
+        const colorDark = new THREE.Color(0x050508); // Moody dark
+
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb);
-        scene.fog = new THREE.Fog(0x87ceeb, 20, 100); 
+        scene.background = colorDay.clone();
+        scene.fog = new THREE.Fog(colorDay.clone(), 20, 100); 
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.7, 25); 
@@ -74,7 +77,7 @@
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.3; 
+        renderer.toneMappingExposure = 1.2; 
         document.body.appendChild(renderer.domElement);
 
         // --- Controls & Raycaster ---
@@ -92,7 +95,11 @@
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 for (let i = 0; i < intersects.length; i++) {
-                    const hitMesh = intersects[i].object;
+                    let hitMesh = intersects[i].object;
+                    while(hitMesh.parent && hitMesh.parent.type === 'Group' && hitMesh.parent !== scene) {
+                        hitMesh = hitMesh.parent;
+                    }
+
                     const physObj = physicsObjects.find(obj => obj.mesh === hitMesh);
                     if (physObj && physObj.body.mass > 0) {
                         physObj.body.wakeUp(); 
@@ -144,10 +151,34 @@
             }
         });
 
-        // --- Lighting ---
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 0.8); scene.add(hemiLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 3.5); sunLight.position.set(-25, 60, -15); 
-        sunLight.castShadow = true; sunLight.shadow.mapSize.set(4096, 4096); sunLight.shadow.camera.near = 0.5; sunLight.shadow.camera.far = 200; sunLight.shadow.camera.left = -50; sunLight.shadow.camera.right = 50; sunLight.shadow.camera.top = 50; sunLight.shadow.camera.bottom = -50; sunLight.shadow.bias = -0.0002; scene.add(sunLight);
+        // --- Zoned Lighting Setup ---
+        
+        // Hemisphere light will dynamically shift intensity based on which room you are in
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); 
+        scene.add(hemiLight);
+        
+        // Bright daylight sun (Will be physically blocked from entering the Smash Room by the solid walls/ceiling)
+        const sunLight = new THREE.DirectionalLight(0xffffee, 3.5); 
+        sunLight.position.set(-25, 60, 10); 
+        sunLight.castShadow = true; 
+        sunLight.shadow.mapSize.set(4096, 4096); 
+        sunLight.shadow.camera.near = 0.5; 
+        sunLight.shadow.camera.far = 200; 
+        sunLight.shadow.camera.left = -60; 
+        sunLight.shadow.camera.right = 60; 
+        sunLight.shadow.camera.top = 60; 
+        sunLight.shadow.camera.bottom = -60; 
+        sunLight.shadow.bias = -0.0005; 
+        scene.add(sunLight);
+
+        // Main Room Fill Lights
+        const galleryFill1 = new THREE.PointLight(0xffffff, 1.2, 50);
+        galleryFill1.position.set(0, ROOM_HEIGHT - 2, 15);
+        scene.add(galleryFill1);
+        
+        const galleryFill2 = new THREE.PointLight(0xffffff, 1.2, 50);
+        galleryFill2.position.set(0, ROOM_HEIGHT - 2, -15);
+        scene.add(galleryFill2);
 
         // --- Texture Generators ---
         const vividColors = ['#ff00ff','#00ffff','#ffff00','#00ff00','#ff3300'];
@@ -167,27 +198,35 @@
         };
         const createSplatterTexture = () => {
             const c = document.createElement('canvas'); c.width=c.height=512; const ctx=c.getContext('2d');
-            ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,512,512); 
-            for(let i=0;i<200;i++){ctx.fillStyle=vividColors[Math.floor(Math.random()*vividColors.length)];ctx.beginPath();const x=Math.random()*512;const y=Math.random()*512;const rad=Math.random()*30+5;ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();if(Math.random()>0.7){ctx.fillRect(x-rad/4,y,rad/2,Math.random()*100+20);}}
+            ctx.fillStyle='#1a1a1a'; ctx.fillRect(0,0,512,512); 
+            for(let i=0;i<300;i++){ctx.fillStyle=vividColors[Math.floor(Math.random()*vividColors.length)];ctx.beginPath();const x=Math.random()*512;const y=Math.random()*512;const rad=Math.random()*30+5;ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();if(Math.random()>0.7){ctx.fillRect(x-rad/4,y,rad/2,Math.random()*100+20);}}
             return new THREE.CanvasTexture(c);
         };
-        const createGraffitiTexture = () => {
-            const c = document.createElement('canvas'); c.width=c.height=512; const ctx=c.getContext('2d');
-            ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,512,512); 
-            ctx.lineCap='round'; ctx.lineJoin='round';
-            for(let i=0;i<20;i++){ctx.strokeStyle=vividColors[Math.floor(Math.random()*vividColors.length)];ctx.lineWidth=Math.random()*10+5;ctx.beginPath();ctx.moveTo(Math.random()*512,Math.random()*512);for(let j=0;j<5;j++)ctx.lineTo(Math.random()*512,Math.random()*512);ctx.stroke();}
+        
+        const createCementTexture = () => {
+            const c = document.createElement('canvas'); c.width=512; c.height=512; const ctx=c.getContext('2d');
+            ctx.fillStyle='#444444'; ctx.fillRect(0,0,512,512); 
+            for(let i=0; i<30000; i++){
+                const v = Math.floor(Math.random() * 40) - 20;
+                ctx.fillStyle = `rgba(${68+v},${68+v},${68+v},0.5)`;
+                ctx.fillRect(Math.random()*512, Math.random()*512, 2, 2);
+            }
+            ctx.lineWidth = 1;
+            for(let i=0; i<30; i++) {
+                ctx.strokeStyle = `rgba(0,0,0,${Math.random()*0.3})`;
+                ctx.beginPath(); ctx.moveTo(Math.random()*512, Math.random()*512);
+                for(let j=0; j<4; j++) ctx.lineTo(Math.random()*512, Math.random()*512); ctx.stroke();
+            }
             return new THREE.CanvasTexture(c);
         };
 
         const drawSmashText = (c) => {
             const ctx = c.getContext('2d');
-            ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,c.width,c.height); 
-            ctx.lineCap='round'; ctx.lineJoin='round';
-            
-            for(let i=0; i<60; i++){
-                ctx.strokeStyle = vividColors[Math.floor(Math.random()*vividColors.length)]; ctx.lineWidth = Math.random()*20+10;
-                ctx.beginPath(); ctx.moveTo(Math.random()*c.width, Math.random()*c.height);
-                for(let j=0;j<5;j++) ctx.lineTo(Math.random()*c.width, Math.random()*c.height); ctx.stroke();
+            ctx.fillStyle='#444444'; ctx.fillRect(0,0,c.width,c.height); 
+            for(let i=0; i<80000; i++){
+                const v = Math.floor(Math.random() * 40) - 20;
+                ctx.fillStyle = `rgba(${68+v},${68+v},${68+v},0.5)`;
+                ctx.fillRect(Math.random()*c.width, Math.random()*c.height, 3, 3);
             }
             
             const line1 = "SMASH THE"; 
@@ -195,26 +234,20 @@
             
             ctx.font = "220px 'Sedgwick Ave Display', 'Rubik Dirt', Impact, sans-serif";
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            
-            const cx = c.width / 2; 
-            const cy1 = c.height / 2 - 110; 
-            const cy2 = c.height / 2 + 130; 
+            const cx = c.width / 2; const cy1 = c.height / 2 - 110; const cy2 = c.height / 2 + 130; 
 
             const drawGraffitiLine = (txt, y) => {
                 ctx.fillStyle = '#000000'; ctx.fillText(txt, cx + 25, y + 25);
                 ctx.fillStyle = '#00ffff'; ctx.fillText(txt, cx + 12, y + 12);
                 ctx.fillStyle = '#ff00ff'; ctx.fillText(txt, cx - 12, y - 12);
-                
                 const grad = ctx.createLinearGradient(0, y-100, 0, y+100);
                 grad.addColorStop(0, '#ffff00'); grad.addColorStop(0.5, '#ff3300'); grad.addColorStop(1, '#ff00ff');
                 ctx.fillStyle = grad; ctx.fillText(txt, cx, y);
-                
                 ctx.strokeStyle = '#111111'; ctx.lineWidth = 16; ctx.strokeText(txt, cx, y);
                 ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.strokeText(txt, cx-4, y-4);
             }
 
-            drawGraffitiLine(line1, cy1);
-            drawGraffitiLine(line2, cy2);
+            drawGraffitiLine(line1, cy1); drawGraffitiLine(line2, cy2);
 
             ctx.fillStyle = '#ff3300';
             for(let i=0; i<40; i++) {
@@ -229,34 +262,109 @@
         smashCanvas.width = 2048; smashCanvas.height = 614; 
         const smashTextTex = new THREE.CanvasTexture(drawSmashText(smashCanvas));
         
+        const drawNeonGraffiti = (c) => {
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#111111'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.strokeStyle = '#333333'; ctx.lineWidth = 10; ctx.strokeRect(0,0, c.width, c.height);
+
+            const neonColor = '#00bbff'; const coreColor = '#ffffff'; 
+            const cx = c.width / 2; const cyText = c.height / 2 - 80; 
+
+            ctx.font = "140px 'Sedgwick Ave Display', Impact, sans-serif";
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const text = "BREAK THIS";
+
+            ctx.shadowColor = neonColor; ctx.shadowBlur = 40; ctx.fillStyle = coreColor; 
+            ctx.fillText(text, cx, cyText); ctx.fillText(text, cx, cyText); 
+            ctx.shadowBlur = 10; ctx.strokeStyle = neonColor; ctx.lineWidth = 6; ctx.strokeText(text, cx, cyText);
+
+            ctx.beginPath();
+            const arrowTop = cyText + 100; const arrowBottom = arrowTop + 110;
+            ctx.moveTo(cx, arrowTop); ctx.lineTo(cx, arrowBottom);
+            ctx.lineTo(cx - 35, arrowBottom - 35); ctx.moveTo(cx, arrowBottom); ctx.lineTo(cx + 35, arrowBottom - 35);
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            
+            ctx.shadowColor = neonColor; ctx.shadowBlur = 40; ctx.strokeStyle = neonColor; ctx.lineWidth = 18;
+            ctx.stroke(); ctx.stroke(); 
+            ctx.shadowBlur = 10; ctx.strokeStyle = coreColor; ctx.lineWidth = 6; ctx.stroke();
+
+            return c;
+        };
+
+        const neonCanvas = document.createElement('canvas'); 
+        neonCanvas.width = 1024; neonCanvas.height = 512;
+        const neonTex = new THREE.CanvasTexture(drawNeonGraffiti(neonCanvas));
+
+        const texStatic = (() => {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256; const ctx = c.getContext('2d');
+            for(let i=0; i<256; i+=4) {
+                for(let j=0; j<256; j+=4) {
+                    const v = Math.floor(Math.random() * 255);
+                    ctx.fillStyle = `rgb(${v},${v},${v})`; ctx.fillRect(i, j, 4, 4);
+                }
+            }
+            return new THREE.CanvasTexture(c);
+        })();
+
+        const texDOS = (() => {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256; const ctx = c.getContext('2d');
+            ctx.fillStyle = '#050505'; ctx.fillRect(0,0,256,256);
+            ctx.fillStyle = '#00ff44'; ctx.font = 'bold 28px monospace'; 
+            ctx.fillText('C:\\> SMASH.EXE', 10, 40);
+            ctx.fillText('Loading...', 10, 80);
+            ctx.fillText('SYSTEM ERROR', 10, 120);
+            ctx.fillText('_', 10, 160);
+            return new THREE.CanvasTexture(c);
+        })();
+
+        const texBars = (() => {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256; const ctx = c.getContext('2d');
+            const colors = ['#ffffff', '#ffff00', '#00ffff', '#00ff00', '#ff00ff', '#ff0000', '#0000ff'];
+            const w = 256 / colors.length;
+            colors.forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(i*w, 0, w, 256); });
+            return new THREE.CanvasTexture(c);
+        })();
+
         document.fonts.ready.then(() => {
-            drawSmashText(smashCanvas);
-            smashTextTex.needsUpdate = true;
+            drawSmashText(smashCanvas); smashTextTex.needsUpdate = true;
+            drawNeonGraffiti(neonCanvas); neonTex.needsUpdate = true;
         });
 
         const woodTex = createWoodenBoardTexture(); woodTex.wrapS=woodTex.wrapT=THREE.RepeatWrapping; woodTex.repeat.set(8,16);
         const marbleTex = createFleckedMarbleTexture(); marbleTex.wrapS=marbleTex.wrapT=THREE.RepeatWrapping; marbleTex.repeat.set(2,2);
         const splatterTex = createSplatterTexture(); splatterTex.wrapS=splatterTex.wrapT=THREE.RepeatWrapping; splatterTex.repeat.set(4,4);
-        const graffitiTex = createGraffitiTexture(); graffitiTex.wrapS=graffitiTex.wrapT=THREE.RepeatWrapping; graffitiTex.repeat.set(2,2);
+        const cementTex = createCementTexture(); cementTex.wrapS=cementTex.wrapT=THREE.RepeatWrapping; cementTex.repeat.set(2,2);
         
         const materials = {
             floorMain: new THREE.MeshStandardMaterial({map:woodTex, roughness:0.5}),
             floorSmash: new THREE.MeshStandardMaterial({map:splatterTex, roughness:0.8, metalness:0.1}),
-            wallWhite: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.4}),
-            wallGraffiti: new THREE.MeshStandardMaterial({map:graffitiTex, roughness:0.6}),
-            wallSmashText: new THREE.MeshStandardMaterial({map:smashTextTex, roughness:0.6}),
-            ceiling: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6}),
+            wallWhite: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.4}), 
+            wallCement: new THREE.MeshStandardMaterial({map:cementTex, roughness:0.9, metalness:0.1}),
+            wallSmashText: new THREE.MeshStandardMaterial({map:smashTextTex, roughness:0.9, metalness:0.1}),
+            neonSign: new THREE.MeshStandardMaterial({
+                map: neonTex, emissiveMap: neonTex, emissive: 0xffffff, emissiveIntensity: 1.5, roughness: 0.2, metalness: 0.8
+            }),
+            ceiling: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6}), 
             frame: new THREE.MeshStandardMaterial({color:0x333333, roughness:0.4}),
-            canvas: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.9}),
-            glass: new THREE.MeshPhysicalMaterial({color:0xffffff, roughness:0, transmission:1, transparent:true, side:THREE.DoubleSide}),
+            glass: new THREE.MeshPhysicalMaterial({color:0xffffff, roughness:0.1, transmission:0.9, transparent:true, side:THREE.DoubleSide}),
             marble: new THREE.MeshStandardMaterial({map:marbleTex, roughness:0.1, metalness:0.1}),
             lantern: new THREE.MeshStandardMaterial({color:0xaaaaaa, metalness:0.9, roughness:0.2}),
-            bulb: new THREE.MeshStandardMaterial({color:0xffffff, emissive:0xffffff}),
+            bulb: new THREE.MeshStandardMaterial({color:0xffffff, emissive:0xffffff}), 
             beam: new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.5}),
             rope: new THREE.MeshStandardMaterial({color:0x800000, roughness:0.9}),
-            gold: new THREE.MeshStandardMaterial({color:0xffd700, metalness:1, roughness:0.2}),
-            breakable: new THREE.MeshStandardMaterial({map:marbleTex, roughness:0.3}),
-            junk: new THREE.MeshStandardMaterial({color:0x555555, roughness:0.8, metalness:0.5})
+            gold: new THREE.MeshStandardMaterial({color:0xffd700, metalness:1, roughness:0.2}), 
+            ceramic: new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.05, metalness: 0.05}),
+            
+            retroPlastic: new THREE.MeshStandardMaterial({color: 0xc8c6b9, roughness: 0.9, metalness: 0.1}),
+            blackPlastic: new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.8, metalness: 0.2}),
+            screenStatic: new THREE.MeshStandardMaterial({map: texStatic, roughness: 0.2, metalness: 0.8, emissiveMap: texStatic, emissive: 0xffffff, emissiveIntensity: 0.8}),
+            screenDOS: new THREE.MeshStandardMaterial({map: texDOS, roughness: 0.2, metalness: 0.8, emissiveMap: texDOS, emissive: 0xffffff, emissiveIntensity: 1.0}),
+            screenBars: new THREE.MeshStandardMaterial({map: texBars, roughness: 0.2, metalness: 0.8, emissiveMap: texBars, emissive: 0xffffff, emissiveIntensity: 0.7}),
+            screenOff: new THREE.MeshStandardMaterial({color: 0x050505, roughness: 0.1, metalness: 0.9}),
+
+            bottleGreen: new THREE.MeshPhysicalMaterial({color: 0x00ff00, roughness: 0.1, transmission: 1, transparent: true, thickness: 0.05}),
+            bottleBrown: new THREE.MeshPhysicalMaterial({color: 0x8b4513, roughness: 0.1, transmission: 1, transparent: true, thickness: 0.05}),
+            bottleClear: new THREE.MeshPhysicalMaterial({color: 0xe0f7fa, roughness: 0.1, transmission: 1, transparent: true, thickness: 0.05})
         };
 
         // --- MAIN ROOM ARCHITECTURE ---
@@ -264,15 +372,15 @@
         floorMain.rotation.x = -Math.PI / 2; floorMain.receiveShadow = true; scene.add(floorMain);
 
         const mainWallGroup = new THREE.Group();
-        const frontWall = new THREE.Mesh(new THREE.BoxGeometry(MAIN_ROOM_W, ROOM_HEIGHT+1, 1), materials.wallWhite); frontWall.position.set(0, (ROOM_HEIGHT+1)/2, MAIN_ROOM_L/2); frontWall.receiveShadow = true; mainWallGroup.add(frontWall);
-        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); leftWall.position.set(-MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); leftWall.receiveShadow = true; mainWallGroup.add(leftWall);
-        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); rightWall.position.set(MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); rightWall.receiveShadow = true; mainWallGroup.add(rightWall);
+        const frontWall = new THREE.Mesh(new THREE.BoxGeometry(MAIN_ROOM_W, ROOM_HEIGHT+1, 1), materials.wallWhite); frontWall.position.set(0, (ROOM_HEIGHT+1)/2, MAIN_ROOM_L/2); frontWall.receiveShadow = true; frontWall.castShadow = true; mainWallGroup.add(frontWall);
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); leftWall.position.set(-MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); leftWall.receiveShadow = true; leftWall.castShadow = true; mainWallGroup.add(leftWall);
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); rightWall.position.set(MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); rightWall.receiveShadow = true; rightWall.castShadow = true; mainWallGroup.add(rightWall);
         
         const whiteZ = -MAIN_ROOM_L/2 + 0.25; 
         const mainBackW = (MAIN_ROOM_W - doorWidth) / 2; 
-        const bWallL = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, 0.5), materials.wallWhite); bWallL.position.set(-(doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallL.receiveShadow=true; mainWallGroup.add(bWallL);
-        const bWallR = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, 0.5), materials.wallWhite); bWallR.position.set((doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallR.receiveShadow=true; mainWallGroup.add(bWallR);
-        const doorLintelW = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallWhite); doorLintelW.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, whiteZ); doorLintelW.receiveShadow=true; mainWallGroup.add(doorLintelW);
+        const bWallL = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, 0.5), materials.wallWhite); bWallL.position.set(-(doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallL.receiveShadow=true; bWallL.castShadow=true; mainWallGroup.add(bWallL);
+        const bWallR = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, 0.5), materials.wallWhite); bWallR.position.set((doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallR.receiveShadow=true; bWallR.castShadow=true; mainWallGroup.add(bWallR);
+        const doorLintelW = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallWhite); doorLintelW.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, whiteZ); doorLintelW.receiveShadow=true; doorLintelW.castShadow=true; mainWallGroup.add(doorLintelW);
         scene.add(mainWallGroup);
 
         // --- MAIN ROOM CEILING ---
@@ -290,10 +398,10 @@
             const beam = new THREE.Mesh(longBeamGeo, materials.beam); beam.position.set(x, ROOM_HEIGHT - beamDepth/2, 0); beam.castShadow=true; beam.receiveShadow=true; ceilingGroup.add(beam);
         });
 
-        const centerRoof = new THREE.Mesh(new THREE.PlaneGeometry(centerCorridorWidth, MAIN_ROOM_L), materials.ceiling); centerRoof.rotation.x = Math.PI/2; centerRoof.position.set(0, ROOM_HEIGHT, 0); centerRoof.receiveShadow=true; ceilingGroup.add(centerRoof);
+        const centerRoof = new THREE.Mesh(new THREE.BoxGeometry(centerCorridorWidth, 1, MAIN_ROOM_L), materials.ceiling); centerRoof.position.set(0, ROOM_HEIGHT+0.5, 0); centerRoof.receiveShadow=true; centerRoof.castShadow=true; ceilingGroup.add(centerRoof);
         const outerWidth = (MAIN_ROOM_W/2) - xOuter;
-        const leftRoof = new THREE.Mesh(new THREE.PlaneGeometry(outerWidth, MAIN_ROOM_L), materials.ceiling); leftRoof.rotation.x = Math.PI/2; leftRoof.position.set(-(xOuter + outerWidth/2), ROOM_HEIGHT, 0); leftRoof.receiveShadow=true; ceilingGroup.add(leftRoof);
-        const rightRoof = new THREE.Mesh(new THREE.PlaneGeometry(outerWidth, MAIN_ROOM_L), materials.ceiling); rightRoof.rotation.x = Math.PI/2; rightRoof.position.set((xOuter + outerWidth/2), ROOM_HEIGHT, 0); rightRoof.receiveShadow=true; ceilingGroup.add(rightRoof);
+        const leftRoof = new THREE.Mesh(new THREE.BoxGeometry(outerWidth, 1, MAIN_ROOM_L), materials.ceiling); leftRoof.position.set(-(xOuter + outerWidth/2), ROOM_HEIGHT+0.5, 0); leftRoof.receiveShadow=true; leftRoof.castShadow=true; ceilingGroup.add(leftRoof);
+        const rightRoof = new THREE.Mesh(new THREE.BoxGeometry(outerWidth, 1, MAIN_ROOM_L), materials.ceiling); rightRoof.position.set((xOuter + outerWidth/2), ROOM_HEIGHT+0.5, 0); rightRoof.receiveShadow=true; rightRoof.castShadow=true; ceilingGroup.add(rightRoof);
         
         const skylightGeo = new THREE.PlaneGeometry(skylightWidth, MAIN_ROOM_L);
         const leftGlass = new THREE.Mesh(skylightGeo, materials.glass); leftGlass.rotation.x = Math.PI/2; leftGlass.position.set(-(xInner + skylightWidth/2), ROOM_HEIGHT, 0); ceilingGroup.add(leftGlass);
@@ -308,7 +416,7 @@
             const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), materials.lantern); rod.position.y = attachY - (dropLen/2); fixture.add(rod);
             const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.1), materials.lantern); socket.position.y = attachY - dropLen - 0.05; fixture.add(socket);
             const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), materials.bulb); bulb.position.y = attachY - dropLen - 0.1 - 0.24; fixture.add(bulb);
-            const pointLight = new THREE.PointLight(0xffffff, 0.8, 15); pointLight.position.set(0, attachY - dropLen - 0.5, 0); fixture.add(pointLight);
+            const pointLight = new THREE.PointLight(0xffffff, 0.6, 15); pointLight.position.set(0, attachY - dropLen - 0.5, 0); fixture.add(pointLight);
             fixture.position.z = zPos; return fixture;
         }
         for(let z = -MAIN_ROOM_L/2 + mainBeamSpacing; z < MAIN_ROOM_L/2; z += mainBeamSpacing*2) { lightsGroup.add(createLantern(z)); }
@@ -348,36 +456,55 @@
 
         const grafZ = -MAIN_ROOM_L/2 - 0.25;  
         const smashFrontW = (SMASH_ROOM_W - doorWidth) / 2;
-        const sWallF_L = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, 0.5), materials.wallGraffiti); sWallF_L.position.set(-(doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_L.receiveShadow=true; smashGroup.add(sWallF_L);
-        const sWallF_R = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, 0.5), materials.wallGraffiti); sWallF_R.position.set((doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_R.receiveShadow=true; smashGroup.add(sWallF_R);
-        const doorLintelG = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallGraffiti); doorLintelG.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, grafZ); doorLintelG.receiveShadow=true; smashGroup.add(doorLintelG);
+        const sWallF_L = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, 0.5), materials.wallCement); sWallF_L.position.set(-(doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_L.receiveShadow=true; sWallF_L.castShadow=true; smashGroup.add(sWallF_L);
+        const sWallF_R = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, 0.5), materials.wallCement); sWallF_R.position.set((doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_R.receiveShadow=true; sWallF_R.castShadow=true; smashGroup.add(sWallF_R);
+        const doorLintelG = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallCement); doorLintelG.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, grafZ); doorLintelG.receiveShadow=true; doorLintelG.castShadow=true; smashGroup.add(doorLintelG);
 
-        const sWallL = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallGraffiti); sWallL.position.set(-SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallL.receiveShadow=true; smashGroup.add(sWallL);
-        const sWallR = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallGraffiti); sWallR.position.set(SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallR.receiveShadow=true; smashGroup.add(sWallR);
+        const sWallL = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallL.position.set(-SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallL.receiveShadow=true; sWallL.castShadow=true; smashGroup.add(sWallL);
+        const sWallR = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallR.position.set(SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallR.receiveShadow=true; sWallR.castShadow=true; smashGroup.add(sWallR);
         
-        // APPLY HUGE SMASH TEXT TO BACK WALL (+z face, array index 4)
-        const sWallB_Mats = [ materials.wallGraffiti, materials.wallGraffiti, materials.wallGraffiti, materials.wallGraffiti, materials.wallSmashText, materials.wallGraffiti ];
-        const sWallB = new THREE.Mesh(new THREE.BoxGeometry(SMASH_ROOM_W, ROOM_HEIGHT, 1), sWallB_Mats); sWallB.position.set(0, ROOM_HEIGHT/2, SMASH_Z - SMASH_ROOM_L/2); sWallB.receiveShadow=true; smashGroup.add(sWallB);
+        const sWallB_Mats = [ materials.wallCement, materials.wallCement, materials.wallCement, materials.wallCement, materials.wallSmashText, materials.wallCement ];
+        const sWallB = new THREE.Mesh(new THREE.BoxGeometry(SMASH_ROOM_W, ROOM_HEIGHT, 1), sWallB_Mats); sWallB.position.set(0, ROOM_HEIGHT/2, SMASH_Z - SMASH_ROOM_L/2); sWallB.receiveShadow=true; sWallB.castShadow=true; smashGroup.add(sWallB);
         
-        // --- SMASH ROOM SKYLIGHT (Grid & Glass) ---
-        const smashCeiling = new THREE.Mesh(new THREE.PlaneGeometry(SMASH_ROOM_W, SMASH_ROOM_L), materials.glass);
-        smashCeiling.rotation.x = Math.PI / 2; smashCeiling.position.set(0, ROOM_HEIGHT, SMASH_Z); smashGroup.add(smashCeiling);
+        const neonSignMesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 8), materials.neonSign);
+        neonSignMesh.position.set(-SMASH_ROOM_W/2 + 0.55, 6, SMASH_Z);
+        neonSignMesh.rotation.y = Math.PI / 2;
+        smashGroup.add(neonSignMesh);
 
-        const sGridDepth = 0.5; const sGridWidth = 0.3; const sGridSpacing = 5;
-        const sTransGeoGrid = new THREE.BoxGeometry(SMASH_ROOM_W, sGridDepth, sGridWidth);
-        for(let z = -SMASH_ROOM_L/2 + sGridSpacing; z < SMASH_ROOM_L/2; z += sGridSpacing) {
-            const beam = new THREE.Mesh(sTransGeoGrid, materials.frame); 
-            beam.position.set(0, ROOM_HEIGHT - sGridDepth/2, SMASH_Z + z); 
-            beam.castShadow = true; beam.receiveShadow = true; 
-            smashGroup.add(beam);
+        // --- SOLID CEILING FOR SMASH ROOM ---
+        const smashCeiling = new THREE.Mesh(new THREE.BoxGeometry(SMASH_ROOM_W, 1, SMASH_ROOM_L), materials.ceiling);
+        smashCeiling.position.set(0, ROOM_HEIGHT + 0.5, SMASH_Z); 
+        smashCeiling.castShadow = true;
+        smashCeiling.receiveShadow = true;
+        smashGroup.add(smashCeiling);
+
+        // --- ADDING MORE NEON LIGHTS ---
+        function createNeonLight(x, z, colorHex, rotY) {
+            const fixture = new THREE.Group();
+            const dropLen = 2.5; 
+            const attachY = ROOM_HEIGHT - 0.1; 
+            const tubeY = attachY - dropLen;
+            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 6, 16), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 3.0, roughness: 0.1, metalness: 0.1 }));
+            tube.rotation.z = Math.PI / 2; tube.position.y = tubeY; fixture.add(tube);
+
+            const cableMat = new THREE.MeshStandardMaterial({color: 0x111111, metalness: 0.8});
+            const cableL = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), cableMat); cableL.position.set(-2.5, tubeY + dropLen/2, 0); fixture.add(cableL);
+            const cableR = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), cableMat); cableR.position.set(2.5, tubeY + dropLen/2, 0); fixture.add(cableR);
+
+            // Shorter distance and lower intensity to balance having more lights
+            const light = new THREE.PointLight(colorHex, 2.5, 25); light.position.set(0, tubeY, 0); fixture.add(light);
+            fixture.position.set(x, 0, z); fixture.rotation.y = rotY; return fixture;
         }
-        const sLongGeoGrid = new THREE.BoxGeometry(sGridWidth, sGridDepth, SMASH_ROOM_L);
-        for(let x = -SMASH_ROOM_W/2 + sGridSpacing; x < SMASH_ROOM_W/2; x += sGridSpacing) {
-            const beam = new THREE.Mesh(sLongGeoGrid, materials.frame); 
-            beam.position.set(x, ROOM_HEIGHT - sGridDepth/2, SMASH_Z); 
-            beam.castShadow = true; beam.receiveShadow = true; 
-            smashGroup.add(beam);
-        }
+
+        // 8 Diverse Neon Lights across the ceiling
+        smashGroup.add(createNeonLight(-12, SMASH_Z - 12, 0xff0044, Math.PI / 4)); // Deep Red-Pink
+        smashGroup.add(createNeonLight(12, SMASH_Z - 12, 0x00ff44, -Math.PI / 4)); // Lime Green
+        smashGroup.add(createNeonLight(0, SMASH_Z - 10, 0xffff00, 0));             // Yellow
+        smashGroup.add(createNeonLight(-15, SMASH_Z, 0x8800ff, Math.PI / 2));      // Purple
+        smashGroup.add(createNeonLight(15, SMASH_Z, 0xff8800, -Math.PI / 2));      // Orange
+        smashGroup.add(createNeonLight(-8, SMASH_Z + 8, 0xff00ff, Math.PI / 8));   // Hot Pink
+        smashGroup.add(createNeonLight(8, SMASH_Z + 8, 0x00ffff, -Math.PI / 8));   // Cyan
+        smashGroup.add(createNeonLight(0, SMASH_Z + 14, 0x0044ff, 0));             // Deep Blue
         
         scene.add(smashGroup);
 
@@ -390,46 +517,199 @@
         const sbB = new CANNON.Body({mass: wallBoundMass, shape: new CANNON.Box(new CANNON.Vec3(SMASH_ROOM_W/2, ROOM_HEIGHT/2, 0.5))}); sbB.position.set(0, ROOM_HEIGHT/2, SMASH_Z - SMASH_ROOM_L/2); world.addBody(sbB);
 
         // --- SMASHABLE CONTENTS ---
-        function createPhysicsBox(pos, size, mass, material) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
-            mesh.position.copy(pos); mesh.castShadow=true; mesh.receiveShadow=true; scene.add(mesh);
-            const shape = new CANNON.Box(new CANNON.Vec3(size.x/2, size.y/2, size.z/2));
+        function registerPhysicsPieceGroup(obj3D, shape, mass, position, eulerRot = null) {
+            obj3D.position.copy(position);
+            if (eulerRot) obj3D.rotation.set(eulerRot.x, eulerRot.y, eulerRot.z);
+            
+            obj3D.traverse((child) => {
+                if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+            });
+            scene.add(obj3D);
+            
             const body = new CANNON.Body({ mass: mass, shape: shape, material: defaultMaterial });
-            
-            if (mass > 0) {
-                body.allowSleep = true;
-                body.sleep(); 
+            body.position.copy(position);
+            if (eulerRot) {
+                const q = new THREE.Quaternion().setFromEuler(eulerRot);
+                body.quaternion.set(q.x, q.y, q.z, q.w);
             }
-            
-            body.position.copy(pos); world.addBody(body);
-            physicsObjects.push({ mesh, body });
+            if (mass > 0) { body.allowSleep = true; body.sleep(); }
+            world.addBody(body);
+            physicsObjects.push({ mesh: obj3D, body: body });
         }
 
-        function createBreakableSculpture(x, z) {
-            const pedMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), materials.wallGraffiti); pedMesh.position.set(x, 0.5, z); pedMesh.receiveShadow=true; scene.add(pedMesh);
-            const pedBody = new CANNON.Body({mass:0, shape: new CANNON.Box(new CANNON.Vec3(1,0.5,1))}); pedBody.position.set(x,0.5,z); world.addBody(pedBody);
-            const blockSize = 0.5;
+        // Ceramic Statues
+        function createCurvedStatue(x, z) {
+            const ped = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 2.5), materials.wallCement);
+            registerPhysicsPieceGroup(ped, new CANNON.Box(new CANNON.Vec3(1.25, 0.5, 1.25)), 0, new THREE.Vector3(x, 0.5, z));
+
+            let currY = 1.0;
+            registerPhysicsPieceGroup(
+                new THREE.Mesh(new THREE.SphereGeometry(1.0, 32, 32).scale(1, 0.5, 1), materials.ceramic),
+                new CANNON.Box(new CANNON.Vec3(1.0, 0.5, 1.0)), 3, new THREE.Vector3(x, currY + 0.5, z)
+            );
+            currY += 1.0;
+            registerPhysicsPieceGroup(
+                new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.7, 2.0, 32), materials.ceramic),
+                new CANNON.Box(new CANNON.Vec3(0.5, 1.0, 0.5)), 2, new THREE.Vector3(x + 0.2, currY + 1.0, z - 0.2), new THREE.Euler(0.2, 0, -0.15) 
+            );
+            currY += 1.8;
+            registerPhysicsPieceGroup(
+                new THREE.Mesh(new THREE.TorusKnotGeometry(0.6, 0.25, 64, 16), materials.ceramic),
+                new CANNON.Sphere(0.85), 1, new THREE.Vector3(x, currY + 0.8, z), new THREE.Euler(Math.PI/4, Math.PI/6, 0)
+            );
+        }
+
+        function createFacetedStatue(x, z) {
+            const ped = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), materials.wallCement);
+            registerPhysicsPieceGroup(ped, new CANNON.Box(new CANNON.Vec3(1, 0.5, 1)), 0, new THREE.Vector3(x, 0.5, z));
+
+            let currY = 1.0;
             for(let i=0; i<3; i++) {
-                for(let j=0; j<5; j++) {
-                    for(let k=0; k<3; k++) {
-                        const bx = x + (i-1)*blockSize*1.05; const by = 1 + blockSize/2 + j*blockSize*1.05; const bz = z + (k-1)*blockSize*1.05;
-                        createPhysicsBox(new THREE.Vector3(bx,by,bz), new THREE.Vector3(blockSize,blockSize,blockSize), 0.5, materials.breakable);
+                const size = 0.9 - (i * 0.15); const height = 1.2;
+                registerPhysicsPieceGroup(
+                    new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0).scale(1, height/size, 1), materials.ceramic),
+                    new CANNON.Box(new CANNON.Vec3(size * 0.8, height, size * 0.8)),
+                    1.5, new THREE.Vector3(x, currY + height, z), new THREE.Euler(0, i * Math.PI/3, 0) 
+                );
+                currY += height * 1.8;
+            }
+        }
+        
+        function createBalancedStatue(x, z) {
+            const ped = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 2.5), materials.wallCement);
+            registerPhysicsPieceGroup(ped, new CANNON.Box(new CANNON.Vec3(1.25, 0.5, 1.25)), 0, new THREE.Vector3(x, 0.5, z));
+
+            let currY = 1.0;
+            registerPhysicsPieceGroup(
+                new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32).scale(1, 0.75, 1), materials.ceramic),
+                new CANNON.Sphere(1.0), 3, new THREE.Vector3(x, currY + 0.9, z)
+            );
+            currY += 1.6;
+            registerPhysicsPieceGroup(
+                new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.4, 1.5, 32), materials.ceramic),
+                new CANNON.Box(new CANNON.Vec3(0.6, 0.75, 0.6)), 2, new THREE.Vector3(x, currY + 0.75, z), new THREE.Euler(0.1, 0, 0.1) 
+            );
+            currY += 1.5;
+            registerPhysicsPieceGroup(
+                new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.3, 32, 64), materials.ceramic),
+                new CANNON.Sphere(1.2), 1.5, new THREE.Vector3(x - 0.2, currY + 1.0, z), new THREE.Euler(Math.PI/6, Math.PI/3, 0)
+            );
+        }
+
+        createCurvedStatue(-6, SMASH_Z - 6);
+        createFacetedStatue(6, SMASH_Z + 6);
+        createBalancedStatue(-16, SMASH_Z); 
+
+
+        // --- REALISTIC E-WASTE BUILDERS ---
+        function createRealisticCRT(x, y, z, rotY, screenTex) {
+            const group = new THREE.Group();
+            const casingMat = Math.random() > 0.5 ? materials.retroPlastic : materials.blackPlastic;
+            
+            const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 0.2), casingMat);
+            bezel.position.set(0, 0, 0.4); group.add(bezel);
+            
+            const screenMat = screenTex ? screenTex : materials.screenOff;
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.65), screenMat);
+            screen.position.set(0, 0, 0.51); group.add(screen);
+            
+            const back = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.6, 0.8, 4), casingMat);
+            back.rotation.y = Math.PI / 4; back.rotation.x = Math.PI / 2; back.position.set(0, 0, -0.1); group.add(back);
+
+            registerPhysicsPieceGroup(group, new CANNON.Box(new CANNON.Vec3(0.5, 0.4, 0.5)), 10, new THREE.Vector3(x, y, z), new THREE.Euler(0, rotY, 0));
+        }
+
+        function createRealisticPC(x, y, z, rotY, isTower) {
+            const group = new THREE.Group();
+            const casingMat = Math.random() > 0.5 ? materials.retroPlastic : materials.blackPlastic;
+            const w = isTower ? 0.4 : 1.2; const h = isTower ? 1.0 : 0.3; const d = isTower ? 1.0 : 1.0;
+            
+            const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), casingMat); group.add(box);
+            const drive = new THREE.Mesh(new THREE.BoxGeometry(isTower? 0.25 : 0.4, 0.05, 0.02), materials.blackPlastic);
+            drive.position.set(0, isTower? h/2 - 0.2 : 0, d/2 + 0.01); group.add(drive);
+
+            registerPhysicsPieceGroup(group, new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2)), 5, new THREE.Vector3(x, y, z), new THREE.Euler(0, rotY, 0));
+        }
+
+
+        // --- CORNER CLUMPED E-WASTE SCATTER ---
+        const corners = [
+            { cx: -15, cz: SMASH_Z - 15 }, // Back Left
+            { cx:  15, cz: SMASH_Z - 15 }, // Back Right
+            { cx: -15, cz: SMASH_Z + 15 }, // Front Left
+            { cx:  15, cz: SMASH_Z + 15 }  // Front Right
+        ];
+
+        corners.forEach(corner => {
+            for (let x = -4; x <= 4; x += 1.8) {
+                for (let z = -4; z <= 4; z += 1.8) {
+                    
+                    if (Math.random() > 0.8) continue;
+
+                    const px = corner.cx + x + (Math.random() - 0.5);
+                    const pz = corner.cz + z + (Math.random() - 0.5);
+                    
+                    const stackCount = Math.floor(Math.random() * 4) + 2; 
+                    let currentY = 0;
+
+                    for (let k = 0; k < stackCount; k++) {
+                        const isCRT = Math.random() > 0.5;
+                        const rotY = Math.random() * Math.PI * 2;
+                        
+                        if (isCRT) {
+                            currentY += 0.4; 
+                            let tex = null;
+                            const r = Math.random();
+                            if (r > 0.7) tex = materials.screenStatic;
+                            else if (r > 0.5) tex = materials.screenBars;
+                            else if (r > 0.3) tex = materials.screenDOS;
+
+                            createRealisticCRT(px + (Math.random()*0.2 - 0.1), currentY, pz + (Math.random()*0.2 - 0.1), rotY, tex);
+                            currentY += 0.4;
+                        } else {
+                            const isTower = Math.random() > 0.5;
+                            const h = isTower ? 1.0 : 0.3;
+                            currentY += h / 2;
+                            createRealisticPC(px + (Math.random()*0.2 - 0.1), currentY, pz + (Math.random()*0.2 - 0.1), rotY, isTower);
+                            currentY += h / 2;
+                        }
                     }
                 }
             }
-        }
-        createBreakableSculpture(-5, SMASH_Z - 5);
-        createBreakableSculpture(5, SMASH_Z + 5);
+        });
 
-        function createJunkPile(x, z) {
-             for(let i=0; i<15; i++) {
-                const size = new THREE.Vector3(Math.random()*0.8+0.4, Math.random()*0.8+0.4, Math.random()*0.8+0.4);
-                createPhysicsBox(new THREE.Vector3(x + (Math.random()-0.5)*4, size.y/2 + Math.random()*2, z + (Math.random()-0.5)*4), size, 1, materials.junk);
-             }
-             createPhysicsBox(new THREE.Vector3(x, 1.5, z), new THREE.Vector3(2, 1.5, 0.5), 5, materials.junk);
+
+        // --- HANGING GLASS BOTTLES ---
+        function createHangingBottle(x, z, dropLen) {
+            const attachY = ROOM_HEIGHT; 
+            const bottleY = attachY - dropLen;
+
+            const stringGeo = new THREE.CylinderGeometry(0.005, 0.005, dropLen);
+            const stringMat = new THREE.MeshStandardMaterial({color: 0x222222});
+            const stringMesh = new THREE.Mesh(stringGeo, stringMat);
+            stringMesh.position.set(x, attachY - dropLen/2, z);
+            scene.add(stringMesh);
+
+            const bGroup = new THREE.Group();
+            const mats = [materials.bottleGreen, materials.bottleBrown, materials.bottleClear];
+            const bMat = mats[Math.floor(Math.random() * mats.length)];
+
+            const bBase = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.4, 16), bMat);
+            bGroup.add(bBase);
+            const bNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.12, 0.2, 16), bMat);
+            bNeck.position.y = 0.3; bGroup.add(bNeck);
+            const bTop = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.15, 16), bMat);
+            bTop.position.y = 0.475; bGroup.add(bTop);
+
+            registerPhysicsPieceGroup(bGroup, new CANNON.Box(new CANNON.Vec3(0.12, 0.35, 0.12)), 0.5, new THREE.Vector3(x, bottleY, z));
         }
-        createJunkPile(0, SMASH_Z + 10);
-        createJunkPile(-8, SMASH_Z - 2);
+
+        for(let i=0; i < 30; i++) {
+            const hx = (Math.random() - 0.5) * (SMASH_ROOM_W - 4);
+            const hz = SMASH_Z + (Math.random() - 0.5) * (SMASH_ROOM_L - 4);
+            const drop = 2 + Math.random() * 6; 
+            createHangingBottle(hx, hz, drop);
+        }
 
         // --- Loop ---
         const clock = new THREE.Clock();
@@ -439,6 +719,18 @@
         function animate() {
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1);
+            const time = clock.getElapsedTime();
+
+            // Smooth Room Transition (Daylight main room, Dark smash room)
+            const inMainRoom = camera.position.z > -30;
+            const targetBgColor = inMainRoom ? colorDay : colorDark;
+            const targetHemiIntensity = inMainRoom ? 0.6 : 0.15;
+            
+            scene.background.lerp(targetBgColor, 0.05);
+            scene.fog.color.lerp(targetBgColor, 0.05);
+            hemiLight.intensity += (targetHemiIntensity - hemiLight.intensity) * 0.05;
+
+            materials.neonSign.emissiveIntensity = Math.abs(Math.sin(time * 3)) * 0.8 + 0.4;
 
             if (controls.isLocked === true) {
                 world.step(1/60, delta, 3);
