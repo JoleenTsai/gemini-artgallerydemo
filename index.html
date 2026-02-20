@@ -152,12 +152,9 @@
         });
 
         // --- Zoned Lighting Setup ---
-        
-        // Hemisphere light will dynamically shift intensity based on which room you are in
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); 
         scene.add(hemiLight);
         
-        // Bright daylight sun (Will be physically blocked from entering the Smash Room by the solid walls/ceiling)
         const sunLight = new THREE.DirectionalLight(0xffffee, 3.5); 
         sunLight.position.set(-25, 60, 10); 
         sunLight.castShadow = true; 
@@ -478,7 +475,7 @@
         smashCeiling.receiveShadow = true;
         smashGroup.add(smashCeiling);
 
-        // --- ADDING MORE NEON LIGHTS ---
+        // --- ADDING MORE HANGING NEON LIGHTS ---
         function createNeonLight(x, z, colorHex, rotY) {
             const fixture = new THREE.Group();
             const dropLen = 2.5; 
@@ -491,21 +488,58 @@
             const cableL = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), cableMat); cableL.position.set(-2.5, tubeY + dropLen/2, 0); fixture.add(cableL);
             const cableR = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, dropLen), cableMat); cableR.position.set(2.5, tubeY + dropLen/2, 0); fixture.add(cableR);
 
-            // Shorter distance and lower intensity to balance having more lights
             const light = new THREE.PointLight(colorHex, 2.5, 25); light.position.set(0, tubeY, 0); fixture.add(light);
             fixture.position.set(x, 0, z); fixture.rotation.y = rotY; return fixture;
         }
 
-        // 8 Diverse Neon Lights across the ceiling
-        smashGroup.add(createNeonLight(-12, SMASH_Z - 12, 0xff0044, Math.PI / 4)); // Deep Red-Pink
-        smashGroup.add(createNeonLight(12, SMASH_Z - 12, 0x00ff44, -Math.PI / 4)); // Lime Green
-        smashGroup.add(createNeonLight(0, SMASH_Z - 10, 0xffff00, 0));             // Yellow
-        smashGroup.add(createNeonLight(-15, SMASH_Z, 0x8800ff, Math.PI / 2));      // Purple
-        smashGroup.add(createNeonLight(15, SMASH_Z, 0xff8800, -Math.PI / 2));      // Orange
-        smashGroup.add(createNeonLight(-8, SMASH_Z + 8, 0xff00ff, Math.PI / 8));   // Hot Pink
-        smashGroup.add(createNeonLight(8, SMASH_Z + 8, 0x00ffff, -Math.PI / 8));   // Cyan
-        smashGroup.add(createNeonLight(0, SMASH_Z + 14, 0x0044ff, 0));             // Deep Blue
-        
+        smashGroup.add(createNeonLight(-12, SMASH_Z - 12, 0xff0044, Math.PI / 4)); 
+        smashGroup.add(createNeonLight(12, SMASH_Z - 12, 0x00ff44, -Math.PI / 4)); 
+        smashGroup.add(createNeonLight(0, SMASH_Z - 10, 0xffff00, 0));             
+        smashGroup.add(createNeonLight(-15, SMASH_Z, 0x8800ff, Math.PI / 2));      
+        smashGroup.add(createNeonLight(15, SMASH_Z, 0xff8800, -Math.PI / 2));      
+        smashGroup.add(createNeonLight(-8, SMASH_Z + 8, 0xff00ff, Math.PI / 8));   
+        smashGroup.add(createNeonLight(8, SMASH_Z + 8, 0x00ffff, -Math.PI / 8));   
+        smashGroup.add(createNeonLight(0, SMASH_Z + 14, 0x0044ff, 0));             
+
+        // --- NEW: NEON WALL SCONCES (Flooding the floor) ---
+        function createNeonSconce(x, y, z, rotY, colorHex) {
+            const fixture = new THREE.Group();
+            
+            // Wall Backing Plate
+            const plate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.0, 0.1), materials.frame);
+            fixture.add(plate);
+
+            // Vertical Neon Tube
+            const tubeMat = new THREE.MeshStandardMaterial({
+                color: colorHex, emissive: colorHex, emissiveIntensity: 3.5, roughness: 0.1, metalness: 0.1
+            });
+            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.5, 16), tubeMat);
+            tube.position.set(0, 0, 0.15); // stick out slightly
+            fixture.add(tube);
+
+            // Light positioned slightly away from wall and pointing downward to flood the floor
+            const light = new THREE.PointLight(colorHex, 3.5, 35);
+            light.position.set(0, -1.5, 1.5); 
+            fixture.add(light);
+
+            fixture.position.set(x, y, z);
+            fixture.rotation.y = rotY;
+            smashGroup.add(fixture);
+        }
+
+        const sconceY = 3.5; // Mount height
+        const halfW = SMASH_ROOM_W / 2;
+
+        // Left Wall Sconces (Facing Inward)
+        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z - 12, Math.PI / 2, 0xff00ff); // Hot Pink
+        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z,      Math.PI / 2, 0x00ffff); // Cyan
+        createNeonSconce(-halfW + 0.05, sconceY, SMASH_Z + 12, Math.PI / 2, 0x8800ff); // Purple
+
+        // Right Wall Sconces (Facing Inward)
+        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z - 12, -Math.PI / 2, 0xff8800); // Orange
+        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z,      -Math.PI / 2, 0x00ff00); // Lime Green
+        createNeonSconce(halfW - 0.05, sconceY, SMASH_Z + 12, -Math.PI / 2, 0x00ffff); // Cyan
+
         scene.add(smashGroup);
 
         // Physics Boundaries
@@ -634,10 +668,10 @@
 
         // --- CORNER CLUMPED E-WASTE SCATTER ---
         const corners = [
-            { cx: -15, cz: SMASH_Z - 15 }, // Back Left
-            { cx:  15, cz: SMASH_Z - 15 }, // Back Right
-            { cx: -15, cz: SMASH_Z + 15 }, // Front Left
-            { cx:  15, cz: SMASH_Z + 15 }  // Front Right
+            { cx: -15, cz: SMASH_Z - 15 }, 
+            { cx:  15, cz: SMASH_Z - 15 }, 
+            { cx: -15, cz: SMASH_Z + 15 }, 
+            { cx:  15, cz: SMASH_Z + 15 }  
         ];
 
         corners.forEach(corner => {
@@ -721,7 +755,7 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             const time = clock.getElapsedTime();
 
-            // Smooth Room Transition (Daylight main room, Dark smash room)
+            // Smooth Room Transition
             const inMainRoom = camera.position.z > -30;
             const targetBgColor = inMainRoom ? colorDay : colorDark;
             const targetHemiIntensity = inMainRoom ? 0.6 : 0.15;
