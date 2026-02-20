@@ -871,7 +871,7 @@
         createFacetedStatue(6, SMASH_Z + 6);
         createBalancedStatue(-16, SMASH_Z); 
 
-        // --- UPDATED: TALLER BROKEN WOODEN PALLET STACKS WITH FIXED VASES ---
+        // --- UPDATED: TOWERING PALLET STACKS ---
         function createBrokenPalletStack(x, z, rotY, addVases = false) {
             const cx = Math.cos(rotY);
             const cz = Math.sin(rotY);
@@ -902,7 +902,8 @@
                 return pallet;
             };
 
-            const numPallets = Math.floor(Math.random() * 3) + 4; 
+            // INCREASED TOWER HEIGHT (8 to 12 pallets)
+            const numPallets = Math.floor(Math.random() * 5) + 8; 
             let py = 0.13;
             let proty = rotY;
             let px = 0;
@@ -917,9 +918,10 @@
                     new THREE.Euler(0, proty, 0)
                 );
                 py += 0.26; 
-                proty += (Math.random() - 0.5) * 0.2;
-                px += (Math.random() - 0.5) * 0.15;
-                pz += (Math.random() - 0.5) * 0.15;
+                // Slightly reduced wobble so the extremely tall stacks don't tip immediately
+                proty += (Math.random() - 0.5) * 0.1;
+                px += (Math.random() - 0.5) * 0.08;
+                pz += (Math.random() - 0.5) * 0.08;
             }
 
             const createPlank = (lx, ly, lz, rx, ry, rz, width, length) => {
@@ -927,11 +929,12 @@
                 registerPhysicsPieceGroup(plank, new CANNON.Box(new CANNON.Vec3(width/2, 0.02, length/2)), 3, offset(lx, ly, lz), new THREE.Euler(rx, rotY + ry, rz));
             };
 
-            for(let i=0; i<8; i++) {
+            // Increased number of loose planks scattered around the towering stacks
+            for(let i=0; i<14; i++) {
                 createPlank(
-                    (Math.random() - 0.5) * 2.5,          
+                    (Math.random() - 0.5) * 3.5,          
                     Math.random() * (py * 0.8),           
-                    (Math.random() - 0.5) * 2.5,          
+                    (Math.random() - 0.5) * 3.5,          
                     (Math.random() - 0.5),                
                     Math.random() * Math.PI,              
                     (Math.random() - 0.5),                
@@ -940,7 +943,6 @@
                 );
             }
 
-            // --- FIXED: PROCEDURAL VARIED CERAMIC VASES ON TOP ---
             if (addVases) {
                 const numVases = Math.floor(Math.random() * 3) + 3; 
                 const topSurfaceY = py - 0.1; 
@@ -951,7 +953,6 @@
                     
                     const vaseGroup = new THREE.Group();
 
-                    // Randomized Parameters
                     const baseRadius = 0.15 + Math.random() * 0.1; 
                     const baseScaleY = 0.8 + Math.random() * 1.0;  
                     const baseHeight = baseRadius * 2 * baseScaleY;
@@ -963,15 +964,12 @@
                     const lipRad = neckTopRad + 0.02 + Math.random() * 0.03;
                     const lipTube = 0.015 + Math.random() * 0.02;
 
-                    // Calculate positions
                     const neckPosY = (baseRadius * baseScaleY * 2) - (baseRadius*0.1) + (neckHeight / 2); 
                     const totalHeight = neckPosY + (neckHeight/2) + lipTube;
                     const maxWidth = Math.max(baseRadius * 2, lipRad * 2 + lipTube * 2);
                     
-                    // Offset to shift meshes down so the group's origin matches its physical center
                     const yOffset = totalHeight / 2;
 
-                    // Build Geometry
                     const base = new THREE.Mesh(new THREE.SphereGeometry(baseRadius, 16, 16), materials.ceramic);
                     base.scale.set(1, baseScaleY, 1);
                     base.position.y = (baseRadius * baseScaleY) - yOffset; 
@@ -1008,7 +1006,7 @@
             smashGroup.add(spotLight);
         }
 
-        // --- SPAWN PALLET STACKS (Two of them with Vases) ---
+        // --- SPAWN TOWERING PALLET STACKS ---
         createBrokenPalletStack(-10, SMASH_Z - 4, Math.PI / 4, true);  
         createBrokenPalletStack(8, SMASH_Z + 6, -Math.PI / 6, false);
         createBrokenPalletStack(12, SMASH_Z - 8, Math.PI / 2, true);   
