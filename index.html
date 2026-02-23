@@ -18,7 +18,7 @@
             Move: <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> &nbsp;|&nbsp; 
             Look: <b>Mouse</b> &nbsp;|&nbsp; 
             Pause: <span class="key">SPACE</span> &nbsp;|&nbsp;
-            <b>Left Click: SMASH</b>
+            <b>Left Click: SMASH / INTERACT</b>
         </div>
     </div>
     <div id="pause-indicator">PAUSED</div>
@@ -48,6 +48,10 @@
         const SMASH_Z = -(MAIN_ROOM_L/2 + SMASH_ROOM_L/2); 
         const doorWidth = 8;
         
+        let isDoorOpen = false;
+        let doorRotationTarget = 0;
+        let donotPushButtonMaterial; 
+
         // --- Physics Setup ---
         const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
         world.allowSleep = true; 
@@ -63,7 +67,7 @@
 
         // --- Three.js Setup (Dynamic Sky Colors) ---
         const colorDay = new THREE.Color(0x87ceeb); 
-        const colorDark = new THREE.Color(0x1a053a); 
+        const colorDark = new THREE.Color(0x2b1055); 
 
         const scene = new THREE.Scene();
         scene.background = colorDay.clone();
@@ -92,24 +96,40 @@
         document.addEventListener('mousedown', (e) => { 
             if(!controls.isLocked) { controls.lock(); return; }
             
-            // SMASH MECHANIC
+            // SMASH OR INTERACT MECHANIC
             if(e.button === 0) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
+                
+                let hitDoor = false;
+                
+                // 1. Check if we hit the Speakeasy Door or Button first
                 for (let i = 0; i < intersects.length; i++) {
-                    let hitMesh = intersects[i].object;
-                    while(hitMesh.parent && hitMesh.parent.type === 'Group' && hitMesh.parent !== scene) {
-                        hitMesh = hitMesh.parent;
+                    if (intersects[i].object.name === "SpeakeasyDoor" || intersects[i].object.name === "DonotPushButton") {
+                        isDoorOpen = !isDoorOpen;
+                        doorRotationTarget = isDoorOpen ? Math.PI / 1.8 : 0; 
+                        hitDoor = true;
+                        break;
                     }
+                }
 
-                    const physObj = physicsObjects.find(obj => obj.mesh === hitMesh);
-                    if (physObj && physObj.body.mass > 0) {
-                        physObj.body.wakeUp(); 
-                        const forceDirection = raycaster.ray.direction.clone().normalize();
-                        const impulse = new CANNON.Vec3(forceDirection.x * 35, forceDirection.y * 35, forceDirection.z * 35);
-                        const impactPoint = new CANNON.Vec3(intersects[i].point.x, intersects[i].point.y, intersects[i].point.z);
-                        physObj.body.applyImpulse(impulse, impactPoint);
-                        break; 
+                // 2. If we didn't hit the door, run the smash physics
+                if (!hitDoor) {
+                    for (let i = 0; i < intersects.length; i++) {
+                        let hitMesh = intersects[i].object;
+                        while(hitMesh.parent && hitMesh.parent.type === 'Group' && hitMesh.parent !== scene) {
+                            hitMesh = hitMesh.parent;
+                        }
+
+                        const physObj = physicsObjects.find(obj => obj.mesh === hitMesh);
+                        if (physObj && physObj.body.mass > 0) {
+                            physObj.body.wakeUp(); 
+                            const forceDirection = raycaster.ray.direction.clone().normalize();
+                            const impulse = new CANNON.Vec3(forceDirection.x * 35, forceDirection.y * 35, forceDirection.z * 35);
+                            const impactPoint = new CANNON.Vec3(intersects[i].point.x, intersects[i].point.y, intersects[i].point.z);
+                            physObj.body.applyImpulse(impulse, impactPoint);
+                            break; 
+                        }
                     }
                 }
             }
@@ -191,14 +211,14 @@
         const createRottingWoodTexture = () => {
             const c = document.createElement('canvas'); c.width=c.height=512; const ctx=c.getContext('2d');
             ctx.fillStyle='#4a4036'; ctx.fillRect(0,0,512,512); 
-            for(let i=0;i<8;i++){
+            for(let i=0; i<8; i++){
                 const y=i*64;
                 ctx.fillStyle=i%2?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.02)';
                 ctx.fillRect(0,y,512,64);
                 ctx.fillStyle='rgba(30,25,20,0.4)';
-                for(let j=0;j<400;j++) ctx.fillRect(Math.random()*512,y+Math.random()*64,Math.random()*80+20,Math.random()*2+1);
+                for(let j=0; j<400; j++) ctx.fillRect(Math.random()*512, y+Math.random()*64, Math.random()*80+20, Math.random()*2+1);
                 ctx.fillStyle='rgba(40,50,30,0.3)'; 
-                for(let j=0;j<150;j++) {
+                for(let j=0; j<150; j++) {
                     ctx.beginPath();
                     ctx.arc(Math.random()*512, y+Math.random()*64, Math.random()*15+5, 0, Math.PI*2);
                     ctx.fill();
@@ -211,8 +231,8 @@
         const createFleckedMarbleTexture = () => {
             const c = document.createElement('canvas'); c.width=c.height=512; const ctx=c.getContext('2d');
             ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,512,512); ctx.lineWidth=2; ctx.strokeStyle='rgba(200,200,200,0.3)';
-            for(let i=0;i<10;i++){ctx.beginPath();ctx.moveTo(Math.random()*512,Math.random()*512);ctx.bezierCurveTo(Math.random()*512,Math.random()*512,Math.random()*512,Math.random()*512,Math.random()*512,Math.random()*512);ctx.stroke();}
-            for(let i=0;i<6000;i++){const g=Math.floor(Math.random()*100)+80;ctx.fillStyle=`rgba(${g},${g},${g},${Math.random()*0.6+0.2})`;ctx.fillRect(Math.random()*512,Math.random()*512,Math.random()*2.5+0.5,Math.random()*2.5+0.5);}
+            for(let i=0; i<10; i++){ctx.beginPath();ctx.moveTo(Math.random()*512,Math.random()*512);ctx.bezierCurveTo(Math.random()*512,Math.random()*512,Math.random()*512,Math.random()*512,Math.random()*512,Math.random()*512);ctx.stroke();}
+            for(let i=0; i<6000; i++){const g=Math.floor(Math.random()*100)+80;ctx.fillStyle=`rgba(${g},${g},${g},${Math.random()*0.6+0.2})`;ctx.fillRect(Math.random()*512,Math.random()*512,Math.random()*2.5+0.5,Math.random()*2.5+0.5);}
             return new THREE.CanvasTexture(c);
         };
 
@@ -264,7 +284,6 @@
             }
             emCtx.fillStyle='#000000'; emCtx.fillRect(0,0,size,size); 
 
-            // Light splatters
             for(let i=0; i<60; i++){
                 const color = vividColors[Math.floor(Math.random()*vividColors.length)];
                 const x = Math.random()*size; const y = Math.random()*size;
@@ -282,7 +301,6 @@
             return { diffuse: new THREE.CanvasTexture(diffCanvas), emissive: new THREE.CanvasTexture(emCanvas) };
         };
 
-        // --- MURAL WITH OVERLAPPING TEXT ---
         const createRightWallMuralTexture = () => {
             const width = 2048; const height = 1024;
             const diffCanvas = document.createElement('canvas'); diffCanvas.width = width; diffCanvas.height = height;
@@ -519,6 +537,23 @@
             return new THREE.CanvasTexture(c);
         })();
 
+        const createDonotPushButtonTexture = () => {
+            const c = document.createElement('canvas'); c.width = 512; c.height = 512; const ctx = c.getContext('2d');
+            
+            // Dark button base
+            ctx.fillStyle = '#222222'; ctx.fillRect(0, 0, 512, 512);
+
+            // Warning text "DO NOT PUSH" using Permanent Marker font
+            ctx.font = "bold 90px 'Permanent Marker', sans-serif";
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            
+            // Warning color text with heavy shadow blur for glow effect
+            ctx.shadowColor = '#ff3300'; ctx.shadowBlur = 40; ctx.fillStyle = '#ff5533';
+            ctx.fillText("DO NOT", 256, 180); ctx.fillText("PUSH", 256, 330);
+
+            return new THREE.CanvasTexture(c);
+        };
+
         document.fonts.ready.then(() => {
             drawSmashText(smashDiffCanvas, smashEmCanvas); 
             smashTextDiffTex.needsUpdate = true;
@@ -541,6 +576,7 @@
         const woodTex = createWoodenBoardTexture(); woodTex.wrapS=woodTex.wrapT=THREE.RepeatWrapping; woodTex.repeat.set(8,16);
         const rotWoodTex = createRottingWoodTexture(); rotWoodTex.wrapS=rotWoodTex.wrapT=THREE.RepeatWrapping; rotWoodTex.repeat.set(2,4);
         const marbleTex = createFleckedMarbleTexture(); marbleTex.wrapS=marbleTex.wrapT=THREE.RepeatWrapping; marbleTex.repeat.set(2,2);
+        const donotPushButtonTex = createDonotPushButtonTexture();
         
         const materials = {
             floorMain: new THREE.MeshStandardMaterial({map:woodTex, roughness:0.5}),
@@ -586,6 +622,9 @@
             crateWood: new THREE.MeshStandardMaterial({map: rotWoodTex, color: 0x888888, roughness: 1.0, metalness: 0.0})
         };
 
+        // define the flashing material for the button
+        donotPushButtonMaterial = new THREE.MeshStandardMaterial({map: donotPushButtonTex, emissiveMap: donotPushButtonTex, emissive: 0xff3300, emissiveIntensity: 1.0, roughness: 0.5});
+
         // --- MAIN ROOM ARCHITECTURE ---
         const floorMain = new THREE.Mesh(new THREE.PlaneGeometry(MAIN_ROOM_W, MAIN_ROOM_L), materials.floorMain);
         floorMain.rotation.x = -Math.PI / 2; floorMain.receiveShadow = true; scene.add(floorMain);
@@ -595,11 +634,14 @@
         const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); leftWall.position.set(-MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); leftWall.receiveShadow = true; leftWall.castShadow = true; mainWallGroup.add(leftWall);
         const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); rightWall.position.set(MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); rightWall.receiveShadow = true; rightWall.castShadow = true; mainWallGroup.add(rightWall);
         
-        const whiteZ = -MAIN_ROOM_L/2 + 0.25; 
+        // Setup Wall coordinates for the door placement
+        const wallDepth = 0.5;
+        const whiteZ = -MAIN_ROOM_L/2 + (wallDepth / 2); // Center of the back wall (-29.75)
         const mainBackW = (MAIN_ROOM_W - doorWidth) / 2; 
-        const bWallL = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, 0.5), materials.wallWhite); bWallL.position.set(-(doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallL.receiveShadow=true; bWallL.castShadow=true; mainWallGroup.add(bWallL);
-        const bWallR = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, 0.5), materials.wallWhite); bWallR.position.set((doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallR.receiveShadow=true; bWallR.castShadow=true; mainWallGroup.add(bWallR);
-        const doorLintelW = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallWhite); doorLintelW.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, whiteZ); doorLintelW.receiveShadow=true; doorLintelW.castShadow=true; mainWallGroup.add(doorLintelW);
+        
+        const bWallL = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, wallDepth), materials.wallWhite); bWallL.position.set(-(doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallL.receiveShadow=true; bWallL.castShadow=true; mainWallGroup.add(bWallL);
+        const bWallR = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, wallDepth), materials.wallWhite); bWallR.position.set((doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallR.receiveShadow=true; bWallR.castShadow=true; mainWallGroup.add(bWallR);
+        const doorLintelW = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, wallDepth), materials.wallWhite); doorLintelW.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, whiteZ); doorLintelW.receiveShadow=true; doorLintelW.castShadow=true; mainWallGroup.add(doorLintelW);
         scene.add(mainWallGroup);
 
         // --- ALL-SKYLIGHT MAIN ROOM CEILING ---
@@ -665,16 +707,68 @@
         function createRope(startVec, endVec) { const midVec = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5); midVec.y -= 0.3; const curve = new THREE.CatmullRomCurve3([startVec, midVec, endVec]); const rope = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.04, 8, false), materials.rope); rope.castShadow=true; fenceGroup.add(rope); }
         createRope(posts[0], posts[1]); createRope(posts[1], posts[2]); createRope(posts[2], posts[3]); createRope(posts[3], posts[0]); scene.add(fenceGroup);
 
+        // --- NEW: SPEAKEASY DOOR (BLENDS INTO WALL) ---
+        const speakeasyDoorGroup = new THREE.Group();
+        // Hinge is positioned on the left side of the doorway, perfectly centered in the depth of the wall
+        speakeasyDoorGroup.position.set(-doorWidth / 2, 4, whiteZ);
+
+        // Create door that has Main Room texture on front and Smash Room texture on back
+        const doorDepth = wallDepth; 
+        const doorMats = [
+            materials.wallWhite,  // right
+            materials.wallWhite,  // left
+            materials.wallWhite,  // top
+            materials.wallWhite,  // bottom
+            materials.wallWhite,  // front (+z) - Facing Main Room
+            materials.wallCement  // back (-z) - Facing Smash Room
+        ];
+
+        // Door mesh slightly smaller than width to avoid scraping
+        const hiddenDoorWidth = doorWidth - 0.05;
+        const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(hiddenDoorWidth, 8.0, doorDepth), doorMats);
+        // Offset mesh so its left edge aligns exactly with the hinge origin
+        doorMesh.position.set(hiddenDoorWidth / 2, 0, 0); 
+        doorMesh.name = "SpeakeasyDoor";
+        doorMesh.castShadow = true;
+        speakeasyDoorGroup.add(doorMesh);
+
+        // --- ADD "DO NOT PUSH" BUTTON AND PICTURE FRAME DIRECTLY TO DOOR ---
+        // Put it near the right edge of the door
+        const buttonLocalX = hiddenDoorWidth - 1.5; 
+        // Positioned in the vertical center (local Y = 0 is center of the 8.0 height)
+        const buttonLocalY = 0; 
+        // Front face is at +doorDepth/2 (0.25). 
+        const buttonFrontZ = doorDepth / 2;
+
+        // 1. Picture Frame 
+        const frameWidth = 1.2;
+        const frameDepth = 0.05;
+        const buttonFrame = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, frameWidth, frameDepth), materials.frame);
+        // Sit flush against the front face
+        buttonFrame.position.set(buttonLocalX, buttonLocalY, buttonFrontZ + (frameDepth / 2));
+        buttonFrame.name = "SpeakeasyDoor"; // Clicking frame opens door
+        speakeasyDoorGroup.add(buttonFrame);
+
+        // 2. The Flashing Button
+        const btnWidth = 1.0;
+        const btnDepth = 0.06; // slightly deeper than frame so it sticks out
+        const donotPushButtonMesh = new THREE.Mesh(new THREE.BoxGeometry(btnWidth, btnWidth, btnDepth), donotPushButtonMaterial);
+        donotPushButtonMesh.position.set(buttonLocalX, buttonLocalY, buttonFrontZ + (btnDepth / 2));
+        donotPushButtonMesh.name = "DonotPushButton";
+        speakeasyDoorGroup.add(donotPushButtonMesh);
+
+        scene.add(speakeasyDoorGroup);
+
         // --- SMASH ROOM ARCHITECTURE ---
         const smashGroup = new THREE.Group();
         const smashFloorMesh = new THREE.Mesh(new THREE.PlaneGeometry(SMASH_ROOM_W, SMASH_ROOM_L), materials.floorSmash);
         smashFloorMesh.rotation.x = -Math.PI / 2; smashFloorMesh.position.set(0, 0.01, SMASH_Z); smashFloorMesh.receiveShadow = true; scene.add(smashFloorMesh);
 
-        const grafZ = -MAIN_ROOM_L/2 - 0.25;  
+        const grafZ = -MAIN_ROOM_L/2 - (wallDepth / 2);  
         const smashFrontW = (SMASH_ROOM_W - doorWidth) / 2;
-        const sWallF_L = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, 0.5), materials.wallCement); sWallF_L.position.set(-(doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_L.receiveShadow=true; sWallF_L.castShadow=true; smashGroup.add(sWallF_L);
-        const sWallF_R = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, 0.5), materials.wallCement); sWallF_R.position.set((doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_R.receiveShadow=true; sWallF_R.castShadow=true; smashGroup.add(sWallF_R);
-        const doorLintelG = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, 0.5), materials.wallCement); doorLintelG.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, grafZ); doorLintelG.receiveShadow=true; doorLintelG.castShadow=true; smashGroup.add(doorLintelG);
+        const sWallF_L = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, wallDepth), materials.wallCement); sWallF_L.position.set(-(doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_L.receiveShadow=true; sWallF_L.castShadow=true; smashGroup.add(sWallF_L);
+        const sWallF_R = new THREE.Mesh(new THREE.BoxGeometry(smashFrontW, ROOM_HEIGHT+1, wallDepth), materials.wallCement); sWallF_R.position.set((doorWidth/2 + smashFrontW/2), (ROOM_HEIGHT+1)/2, grafZ); sWallF_R.receiveShadow=true; sWallF_R.castShadow=true; smashGroup.add(sWallF_R);
+        const doorLintelG = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, wallDepth), materials.wallCement); doorLintelG.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, grafZ); doorLintelG.receiveShadow=true; doorLintelG.castShadow=true; smashGroup.add(doorLintelG);
 
         const sWallL = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallL.position.set(-SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallL.receiveShadow=true; sWallL.castShadow=true; smashGroup.add(sWallL);
         const sWallR = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallR.position.set(SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallR.receiveShadow=true; sWallR.castShadow=true; smashGroup.add(sWallR);
@@ -758,20 +852,20 @@
         createNeonSconce(halfW - 0.05, sconceY, SMASH_Z + 12, -Math.PI / 2, 0x00ffff); 
 
         // --- MASSIVE GLOBAL SMASH ROOM LIGHTS ---
-        const smashGlobalLight1 = new THREE.PointLight(0xff00ff, 5.0, 70);
-        smashGlobalLight1.position.set(-10, 8, SMASH_Z);
+        const smashGlobalLight1 = new THREE.PointLight(0xff00ff, 5.0, 90);
+        smashGlobalLight1.position.set(-15, 8, SMASH_Z);
         smashGroup.add(smashGlobalLight1);
 
-        const smashGlobalLight2 = new THREE.PointLight(0x00ffcc, 5.0, 70);
-        smashGlobalLight2.position.set(10, 8, SMASH_Z);
+        const smashGlobalLight2 = new THREE.PointLight(0x00ffcc, 5.0, 90);
+        smashGlobalLight2.position.set(15, 8, SMASH_Z);
         smashGroup.add(smashGlobalLight2);
         
-        const smashGlobalLight3 = new THREE.PointLight(0xffff00, 4.0, 60);
-        smashGlobalLight3.position.set(0, 8, SMASH_Z - 10);
+        const smashGlobalLight3 = new THREE.PointLight(0xffff00, 4.0, 70);
+        smashGlobalLight3.position.set(0, 8, SMASH_Z - 15);
         smashGroup.add(smashGlobalLight3);
 
-        const smashGlobalLight4 = new THREE.PointLight(0x8800ff, 3.0, 80);
-        smashGlobalLight4.position.set(0, 5, SMASH_Z);
+        const smashGlobalLight4 = new THREE.PointLight(0x8800ff, 4.0, 90);
+        smashGlobalLight4.position.set(0, 5, SMASH_Z + 5);
         smashGroup.add(smashGlobalLight4);
 
         scene.add(smashGroup);
@@ -871,7 +965,7 @@
         createFacetedStatue(6, SMASH_Z + 6);
         createBalancedStatue(-16, SMASH_Z); 
 
-        // --- UPDATED: TOWERING PALLET STACKS ---
+        // --- TOWERING PALLET STACKS WITH FIXED VASES ---
         function createBrokenPalletStack(x, z, rotY, addVases = false) {
             const cx = Math.cos(rotY);
             const cz = Math.sin(rotY);
@@ -902,7 +996,6 @@
                 return pallet;
             };
 
-            // INCREASED TOWER HEIGHT (8 to 12 pallets)
             const numPallets = Math.floor(Math.random() * 5) + 8; 
             let py = 0.13;
             let proty = rotY;
@@ -918,7 +1011,6 @@
                     new THREE.Euler(0, proty, 0)
                 );
                 py += 0.26; 
-                // Slightly reduced wobble so the extremely tall stacks don't tip immediately
                 proty += (Math.random() - 0.5) * 0.1;
                 px += (Math.random() - 0.5) * 0.08;
                 pz += (Math.random() - 0.5) * 0.08;
@@ -929,7 +1021,6 @@
                 registerPhysicsPieceGroup(plank, new CANNON.Box(new CANNON.Vec3(width/2, 0.02, length/2)), 3, offset(lx, ly, lz), new THREE.Euler(rx, rotY + ry, rz));
             };
 
-            // Increased number of loose planks scattered around the towering stacks
             for(let i=0; i<14; i++) {
                 createPlank(
                     (Math.random() - 0.5) * 3.5,          
@@ -1006,7 +1097,6 @@
             smashGroup.add(spotLight);
         }
 
-        // --- SPAWN TOWERING PALLET STACKS ---
         createBrokenPalletStack(-10, SMASH_Z - 4, Math.PI / 4, true);  
         createBrokenPalletStack(8, SMASH_Z + 6, -Math.PI / 6, false);
         createBrokenPalletStack(12, SMASH_Z - 8, Math.PI / 2, true);   
@@ -1133,9 +1223,9 @@
             // Smooth Room Transition
             const inMainRoom = camera.position.z > -30;
             const targetBgColor = inMainRoom ? colorDay : colorDark;
-            const targetHemiIntensity = inMainRoom ? 0.6 : 0.15;
-            const targetFogNear = inMainRoom ? 20 : 2; 
-            const targetFogFar = inMainRoom ? 100 : 55;
+            const targetHemiIntensity = inMainRoom ? 0.6 : 0.45;
+            const targetFogNear = inMainRoom ? 20 : 5; 
+            const targetFogFar = inMainRoom ? 100 : 80;
             
             scene.background.lerp(targetBgColor, 0.05);
             scene.fog.color.lerp(targetBgColor, 0.05);
@@ -1144,6 +1234,12 @@
             hemiLight.intensity += (targetHemiIntensity - hemiLight.intensity) * 0.05;
 
             materials.neonSign.emissiveIntensity = Math.abs(Math.sin(time * 3)) * 0.8 + 0.4;
+            
+            // ANIMATE "DO NOT PUSH" BUTTON FLASHING
+            donotPushButtonMaterial.emissiveIntensity = Math.max(0.0, Math.sin(time * 6)) * 2.0 + 0.5;
+            
+            // Animate Speakeasy Door swing
+            speakeasyDoorGroup.rotation.y += (doorRotationTarget - speakeasyDoorGroup.rotation.y) * 0.1;
 
             if (controls.isLocked === true) {
                 world.step(1/60, delta, 3);
@@ -1164,20 +1260,22 @@
                 
                 let cx = camera.position.x; 
                 let cz = camera.position.z;
+                const doorZ = -MAIN_ROOM_L/2;
 
-                if (cz > -MAIN_ROOM_L/2) { 
+                // Collision with Speakeasy Door Logic
+                if (cz > doorZ) { 
                     cx = THREE.MathUtils.clamp(cx, -MAIN_ROOM_W/2+1, MAIN_ROOM_W/2-1);
-                    if (Math.abs(cx) < doorWidth/2 - 1 && cz < -MAIN_ROOM_L/2 + 2) {
+                    if (isDoorOpen && Math.abs(cx) < (doorWidth/2 - 1)) {
                         cz = Math.min(cz, MAIN_ROOM_L/2-1); 
                     } else {
-                        cz = THREE.MathUtils.clamp(cz, -MAIN_ROOM_L/2+1, MAIN_ROOM_L/2-1);
+                        cz = THREE.MathUtils.clamp(cz, doorZ + 1, MAIN_ROOM_L/2-1); 
                     }
                 } else { 
                     cx = THREE.MathUtils.clamp(cx, -SMASH_ROOM_W/2+1, SMASH_ROOM_W/2-1);
-                    if (Math.abs(cx) < doorWidth/2 - 1 && cz > SMASH_Z + SMASH_ROOM_L/2 - 2) {
+                    if (isDoorOpen && Math.abs(cx) < (doorWidth/2 - 1)) {
                         cz = Math.max(cz, SMASH_Z - SMASH_ROOM_L/2+1); 
                     } else {
-                        cz = THREE.MathUtils.clamp(cz, SMASH_Z - SMASH_ROOM_L/2+1, SMASH_Z + SMASH_ROOM_L/2-1);
+                        cz = THREE.MathUtils.clamp(cz, SMASH_Z - SMASH_ROOM_L/2+1, doorZ - 1); 
                     }
                 }
                 
