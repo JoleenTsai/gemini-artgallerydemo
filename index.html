@@ -87,13 +87,16 @@
         renderer.toneMappingExposure = 1.2; 
         document.body.appendChild(renderer.domElement);
 
-        // --- INSTANT SHATTER ENGINE ---
+        // --- CUSTOM SHATTER ENGINE ---
         function shatterObject(physObj, impactPoint, forceDirection) {
             if (!physObj || !physObj.mesh || !physObj.body) return;
 
             const index = physicsObjects.indexOf(physObj);
             if (index > -1) physicsObjects.splice(index, 1);
             else return; 
+            
+            // Record velocity right before removing body so shards inherit momentum
+            const parentVel = new CANNON.Vec3().copy(physObj.body.velocity);
 
             scene.remove(physObj.mesh);
             world.removeBody(physObj.body);
@@ -105,18 +108,17 @@
             bbox.getCenter(center);
 
             const mat = physObj.shardMat || defaultMaterial;
-            
             const volume = size.x * size.y * size.z;
-            const numShards = Math.floor(Math.max(15, Math.min(45, volume * 100)));
+            const numShards = Math.floor(Math.max(12, Math.min(35, volume * 80)));
 
             for(let i=0; i<numShards; i++) {
-                const rSize = (Math.random() * 0.05) + 0.03; 
+                const rSize = (Math.random() * 0.06) + 0.04; 
                 const shardGeo = new THREE.TetrahedronGeometry(rSize);
                 const shardMesh = new THREE.Mesh(shardGeo, mat);
                 
-                const sx = center.x + (Math.random() - 0.5) * size.x * 0.8;
-                const sy = center.y + (Math.random() - 0.5) * size.y * 0.8;
-                const sz = center.z + (Math.random() - 0.5) * size.z * 0.8;
+                const sx = center.x + (Math.random() - 0.5) * size.x * 0.7;
+                const sy = center.y + (Math.random() - 0.5) * size.y * 0.7;
+                const sz = center.z + (Math.random() - 0.5) * size.z * 0.7;
                 
                 shardMesh.position.set(sx, sy, sz);
                 shardMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
@@ -127,11 +129,15 @@
                 shardBody.position.copy(shardMesh.position);
                 shardBody.quaternion.copy(shardMesh.quaternion);
                 
-                const explosionDir = new CANNON.Vec3(sx - impactPoint.x, sy - impactPoint.y, sz - impactPoint.z);
+                // Transfer original falling/flying momentum to the individual shards
+                shardBody.velocity.set(parentVel.x * 0.8, parentVel.y * 0.8, parentVel.z * 0.8);
+
+                // Add minor localized explosion burst away from the impact point
+                const explosionDir = new CANNON.Vec3(sx - impactPoint.x, sy - Math.min(impactPoint.y, sy - 0.2), sz - impactPoint.z);
                 explosionDir.normalize();
                 
-                const outForce = 2.0 + Math.random() * 4.0;
-                const fwdForce = 5.0 + Math.random() * 5.0;
+                const outForce = 1.0 + Math.random() * 3.0;
+                const fwdForce = 1.0 + Math.random() * 2.0;
                 
                 const impulse = new CANNON.Vec3(
                     explosionDir.x * outForce + forceDirection.x * fwdForce,
@@ -140,7 +146,7 @@
                 );
                 
                 world.addBody(shardBody);
-                physicsObjects.push({ mesh: shardMesh, body: shardBody, isFragile: false });
+                physicsObjects.push({ mesh: shardMesh, body: shardBody, isFragile: false, isShattered: false });
                 
                 shardBody.applyImpulse(impulse, new CANNON.Vec3(shardBody.position.x, shardBody.position.y, shardBody.position.z));
             }
@@ -190,17 +196,14 @@
                                 physObj.body.updateMassProperties();
                             }
 
-                            if (physObj.body.mass > 0 || physObj.isFragile) {
+                            if (physObj.body.mass > 0) {
                                 physObj.body.wakeUp(); 
                                 const forceDirection = raycaster.ray.direction.clone().normalize();
                                 const impactPoint = new CANNON.Vec3(intersects[i].point.x, intersects[i].point.y, intersects[i].point.z);
                                 
-                                if (physObj.isFragile) {
-                                    shatterObject(physObj, impactPoint, forceDirection);
-                                } else {
-                                    const impulse = new CANNON.Vec3(forceDirection.x * 45, forceDirection.y * 45, forceDirection.z * 45);
-                                    physObj.body.applyImpulse(impulse, impactPoint);
-                                }
+                                // Send EVERYTHING flying! Vases won't break here, they'll break when they hit the floor
+                                const impulse = new CANNON.Vec3(forceDirection.x * 45, forceDirection.y * 45, forceDirection.z * 45);
+                                physObj.body.applyImpulse(impulse, impactPoint);
                                 break; 
                             }
                         }
@@ -861,7 +864,7 @@
             if (mass > 0) { body.allowSleep = true; body.sleep(); }
             world.addBody(body);
             
-            physicsObjects.push({ mesh: obj3D, body: body, isFragile: isFragile, shardMat: shardMat });
+            physicsObjects.push({ mesh: obj3D, body: body, isFragile: isFragile, shardMat: shardMat, isShattered: false });
         }
 
         function createCurvedStatue(x, z) {
@@ -1164,7 +1167,7 @@
             registerPhysicsPieceGroup(bGroup, new CANNON.Box(new CANNON.Vec3(0.24, 0.7, 0.24)), 0, new THREE.Vector3(x, bottleY, z), null, true, bMat);
         }
 
-        // --- NEW: SPAWN BOTTLES BUT AVOID DOORWAY ---
+        // Spawn bottles, but leave a path clear by the doorway
         let bottlesSpawned = 0;
         while(bottlesSpawned < 25) {
             const hx = (Math.random() - 0.5) * (SMASH_ROOM_W - 4);
