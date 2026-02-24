@@ -16,7 +16,7 @@
         <div class="hud-text">
             <span id="status-text">Click to Walk</span> &nbsp;|&nbsp; 
             Move: <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> &nbsp;|&nbsp; 
-            Look: <b>Mouse</b> &nbsp;|&nbsp; 
+            Height: <span class="key">Q</span> (Down) / <span class="key">E</span> (Up) &nbsp;|&nbsp; 
             Pause: <span class="key">SPACE</span> &nbsp;|&nbsp;
             <b>Left Click: SMASH / INTERACT</b>
         </div>
@@ -51,6 +51,7 @@
         let isDoorOpen = false;
         let doorRotationTarget = 0;
         let donotPushButtonMaterial; 
+        let cameraHeight = 1.7;
 
         // --- Physics Setup ---
         const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
@@ -74,7 +75,7 @@
         scene.fog = new THREE.Fog(colorDay.clone(), 20, 100); 
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.7, 25); 
+        camera.position.set(0, cameraHeight, 25); 
 
         // Optimized Renderer
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
@@ -86,6 +87,65 @@
         renderer.toneMappingExposure = 1.2; 
         document.body.appendChild(renderer.domElement);
 
+        // --- INSTANT SHATTER ENGINE ---
+        function shatterObject(physObj, impactPoint, forceDirection) {
+            if (!physObj || !physObj.mesh || !physObj.body) return;
+
+            const index = physicsObjects.indexOf(physObj);
+            if (index > -1) physicsObjects.splice(index, 1);
+            else return; 
+
+            scene.remove(physObj.mesh);
+            world.removeBody(physObj.body);
+            
+            const bbox = new THREE.Box3().setFromObject(physObj.mesh);
+            const size = new THREE.Vector3();
+            bbox.getSize(size);
+            const center = new THREE.Vector3();
+            bbox.getCenter(center);
+
+            const mat = physObj.shardMat || defaultMaterial;
+            
+            const volume = size.x * size.y * size.z;
+            const numShards = Math.floor(Math.max(15, Math.min(45, volume * 100)));
+
+            for(let i=0; i<numShards; i++) {
+                const rSize = (Math.random() * 0.05) + 0.03; 
+                const shardGeo = new THREE.TetrahedronGeometry(rSize);
+                const shardMesh = new THREE.Mesh(shardGeo, mat);
+                
+                const sx = center.x + (Math.random() - 0.5) * size.x * 0.8;
+                const sy = center.y + (Math.random() - 0.5) * size.y * 0.8;
+                const sz = center.z + (Math.random() - 0.5) * size.z * 0.8;
+                
+                shardMesh.position.set(sx, sy, sz);
+                shardMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                scene.add(shardMesh);
+
+                const shardShape = new CANNON.Box(new CANNON.Vec3(rSize, rSize, rSize));
+                const shardBody = new CANNON.Body({ mass: 0.2, shape: shardShape, material: defaultMaterial });
+                shardBody.position.copy(shardMesh.position);
+                shardBody.quaternion.copy(shardMesh.quaternion);
+                
+                const explosionDir = new CANNON.Vec3(sx - impactPoint.x, sy - impactPoint.y, sz - impactPoint.z);
+                explosionDir.normalize();
+                
+                const outForce = 2.0 + Math.random() * 4.0;
+                const fwdForce = 5.0 + Math.random() * 5.0;
+                
+                const impulse = new CANNON.Vec3(
+                    explosionDir.x * outForce + forceDirection.x * fwdForce,
+                    explosionDir.y * outForce + forceDirection.y * fwdForce,
+                    explosionDir.z * outForce + forceDirection.z * fwdForce
+                );
+                
+                world.addBody(shardBody);
+                physicsObjects.push({ mesh: shardMesh, body: shardBody, isFragile: false });
+                
+                shardBody.applyImpulse(impulse, new CANNON.Vec3(shardBody.position.x, shardBody.position.y, shardBody.position.z));
+            }
+        }
+
         // --- Controls & Raycaster ---
         const controls = new PointerLockControls(camera, document.body);
         const statusText = document.getElementById('status-text');
@@ -96,14 +156,13 @@
         document.addEventListener('mousedown', (e) => { 
             if(!controls.isLocked) { controls.lock(); return; }
             
-            // SMASH OR INTERACT MECHANIC
             if(e.button === 0) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 
                 let hitDoor = false;
+                let hitButton = false;
                 
-                // 1. Check if we hit the Speakeasy Door or Button first
                 for (let i = 0; i < intersects.length; i++) {
                     if (intersects[i].object.name === "SpeakeasyDoor" || intersects[i].object.name === "DonotPushButton") {
                         isDoorOpen = !isDoorOpen;
@@ -113,22 +172,37 @@
                     }
                 }
 
-                // 2. If we didn't hit the door, run the smash physics
-                if (!hitDoor) {
+                if (!hitDoor && !hitButton) {
                     for (let i = 0; i < intersects.length; i++) {
                         let hitMesh = intersects[i].object;
                         while(hitMesh.parent && hitMesh.parent.type === 'Group' && hitMesh.parent !== scene) {
                             hitMesh = hitMesh.parent;
                         }
 
-                        const physObj = physicsObjects.find(obj => obj.mesh === hitMesh);
-                        if (physObj && physObj.body.mass > 0) {
-                            physObj.body.wakeUp(); 
-                            const forceDirection = raycaster.ray.direction.clone().normalize();
-                            const impulse = new CANNON.Vec3(forceDirection.x * 35, forceDirection.y * 35, forceDirection.z * 35);
-                            const impactPoint = new CANNON.Vec3(intersects[i].point.x, intersects[i].point.y, intersects[i].point.z);
-                            physObj.body.applyImpulse(impulse, impactPoint);
-                            break; 
+                        const physIndex = physicsObjects.findIndex(obj => obj.mesh === hitMesh);
+                        if (physIndex !== -1) {
+                            const physObj = physicsObjects[physIndex];
+                            
+                            // Wake up floating/hanging objects (like the glass bottles)
+                            if (physObj.mesh.userData.isHangingBottle && physObj.body.mass === 0) {
+                                physObj.body.mass = 1.0;
+                                physObj.body.type = CANNON.Body.DYNAMIC;
+                                physObj.body.updateMassProperties();
+                            }
+
+                            if (physObj.body.mass > 0 || physObj.isFragile) {
+                                physObj.body.wakeUp(); 
+                                const forceDirection = raycaster.ray.direction.clone().normalize();
+                                const impactPoint = new CANNON.Vec3(intersects[i].point.x, intersects[i].point.y, intersects[i].point.z);
+                                
+                                if (physObj.isFragile) {
+                                    shatterObject(physObj, impactPoint, forceDirection);
+                                } else {
+                                    const impulse = new CANNON.Vec3(forceDirection.x * 45, forceDirection.y * 45, forceDirection.z * 45);
+                                    physObj.body.applyImpulse(impulse, impactPoint);
+                                }
+                                break; 
+                            }
                         }
                     }
                 }
@@ -147,12 +221,15 @@
             crosshair.style.display = 'none'; 
         });
 
-        const moveState = { forward: false, backward: false, left: false, right: false };
+        const moveState = { forward: false, backward: false, left: false, right: false, up: false, down: false };
         document.addEventListener('keydown', (e) => { 
             if (e.code === 'ArrowUp' || e.code === 'KeyW') moveState.forward = true; 
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveState.left = true; 
             if (e.code === 'ArrowDown' || e.code === 'KeyS') moveState.backward = true; 
             if (e.code === 'ArrowRight' || e.code === 'KeyD') moveState.right = true; 
+            if (e.code === 'KeyE') moveState.up = true;
+            if (e.code === 'KeyQ') moveState.down = true;
+
             if (e.code === 'Space') {
                 if (controls.isLocked) controls.unlock();
                 else controls.lock();
@@ -164,13 +241,8 @@
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveState.left = false; 
             if (e.code === 'ArrowDown' || e.code === 'KeyS') moveState.backward = false; 
             if (e.code === 'ArrowRight' || e.code === 'KeyD') moveState.right = false; 
-        });
-
-        document.addEventListener('wheel', (e) => { 
-            if (controls.isLocked) {
-                camera.fov = THREE.MathUtils.clamp(camera.fov + e.deltaY * 0.05, 20, 75); 
-                camera.updateProjectionMatrix(); 
-            }
+            if (e.code === 'KeyE') moveState.up = false;
+            if (e.code === 'KeyQ') moveState.down = false;
         });
 
         // --- Zoned Lighting Setup ---
@@ -315,83 +387,8 @@
             const sprayGreen = '#39ff14'; const sprayOrange = '#ff6600';
             const sprayPurple = '#9d00ff'; const sprayNeonCyan = '#00ffcc';
 
-            const textX = width * 0.32; const textY = height / 2 + 140; 
-            const errX = width * 0.30; const errY = height / 2 - 180;   
-            const smileyX = width * 0.78; const smileyY = height / 2;
+            const smileyX = width * 0.5; const smileyY = height / 2;
             const smileyRad = height * 0.4;
-
-            const generateFX = (baseX, baseY, widthRange, count) => {
-                const drips = [];
-                const speckles = [];
-                for (let i = 0; i < count; i++) {
-                    drips.push({
-                        dx: baseX + (Math.random() - 0.5) * widthRange,
-                        dy: baseY + 50 + (Math.random() * 80),
-                        w: Math.random() * 8 + 4,
-                        h: Math.random() * 150 + 40
-                    });
-                }
-                for(let i = 0; i < count * 8; i++) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const dist = Math.random() * (widthRange * 0.6);
-                    speckles.push({
-                        sx: baseX + Math.cos(angle) * dist * 1.5,
-                        sy: baseY + Math.sin(angle) * dist * 0.6,
-                        r: Math.random() * 5 + 1
-                    });
-                }
-                return { drips, speckles };
-            };
-
-            const fx949 = generateFX(textX, textY, 800, 50);
-            const fxErrvine = generateFX(errX, errY, 900, 60);
-
-            const drawSprayPaintText = (ctx, text, x, y, color1, color2, isEmissive, fontStr, rotation, fxData, outlineColor = null) => {
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.rotate(rotation);
-                ctx.font = fontStr;
-                ctx.textAlign = "center"; ctx.textBaseline = "middle";
-
-                const grad = ctx.createLinearGradient(-400, 0, 400, 0);
-                grad.addColorStop(0, color1); grad.addColorStop(1, color2);
-
-                ctx.shadowBlur = isEmissive ? 80 : 15;
-                ctx.shadowColor = color1;
-                ctx.fillStyle = grad;
-                ctx.fillText(text, 0, 0);
-                
-                if (isEmissive) {
-                    ctx.shadowBlur = 40; ctx.shadowColor = color2;
-                    ctx.fillText(text, 0, 0);
-                }
-
-                if (outlineColor) {
-                    ctx.lineWidth = 15;
-                    ctx.strokeStyle = outlineColor;
-                    ctx.shadowBlur = isEmissive ? 15 : 0; 
-                    ctx.shadowColor = outlineColor;
-                    ctx.strokeText(text, 0, 0);
-                }
-
-                ctx.restore();
-
-                ctx.shadowBlur = isEmissive ? 20 : 5;
-                fxData.drips.forEach(drip => {
-                    ctx.shadowColor = (drip.dx < x) ? color1 : color2;
-                    ctx.fillStyle = (drip.dx < x) ? color1 : color2;
-                    ctx.fillRect(drip.dx, drip.dy, drip.w, drip.h);
-                    ctx.beginPath();
-                    ctx.arc(drip.dx + drip.w/2, drip.dy + drip.h, drip.w/2, 0, Math.PI*2);
-                    ctx.fill();
-                });
-                
-                ctx.shadowBlur = isEmissive ? 10 : 2;
-                fxData.speckles.forEach(sp => {
-                    ctx.fillStyle = (sp.sx < x) ? color1 : color2;
-                    ctx.beginPath(); ctx.arc(sp.sx, sp.sy, sp.r, 0, Math.PI * 2); ctx.fill();
-                });
-            };
 
             const drawSmiley = (ctx, cx, cy, faceRad) => {
                 ctx.shadowBlur = 0; 
@@ -414,15 +411,7 @@
                 ctx.lineWidth = 25; ctx.strokeStyle = neonPink; ctx.lineCap = 'round'; ctx.stroke();
             };
 
-            const font949 = "bold 650px 'Spartical', 'Sedgwick Ave Display', 'Permanent Marker', cursive";
-            const fontErrvine = "450px 'Ceviche One', 'Creepster', 'Rubik Dirt', cursive";
-
-            drawSprayPaintText(diffCtx, "949", textX, textY, sprayGreen, sprayOrange, false, font949, 0, fx949);
-            drawSprayPaintText(diffCtx, "ERRVINE", errX, errY, sprayPurple, sprayNeonCyan, false, fontErrvine, -0.15, fxErrvine, '#ffffff');
             drawSmiley(diffCtx, smileyX, smileyY, smileyRad);
-
-            drawSprayPaintText(emCtx, "949", textX, textY, sprayGreen, sprayOrange, true, font949, 0, fx949);
-            drawSprayPaintText(emCtx, "ERRVINE", errX, errY, sprayPurple, sprayNeonCyan, true, fontErrvine, -0.15, fxErrvine, '#ffffff');
             drawSmiley(emCtx, smileyX, smileyY, smileyRad);
 
             return { diffuse: new THREE.CanvasTexture(diffCanvas), emissive: new THREE.CanvasTexture(emCanvas) };
@@ -537,20 +526,21 @@
             return new THREE.CanvasTexture(c);
         })();
 
+        const createSpeakeasyDoorTexture = () => {
+            const c = document.createElement('canvas'); c.width = 1024; c.height = 1024; const ctx = c.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1024, 1024);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+            for(let i=0; i<30000; i++) ctx.fillRect(Math.random()*1024, Math.random()*1024, Math.random()*3+1, Math.random()*3+1);
+            return new THREE.CanvasTexture(c);
+        };
+
         const createDonotPushButtonTexture = () => {
             const c = document.createElement('canvas'); c.width = 512; c.height = 512; const ctx = c.getContext('2d');
-            
-            // Dark button base
             ctx.fillStyle = '#222222'; ctx.fillRect(0, 0, 512, 512);
-
-            // Warning text "DO NOT PUSH" using Permanent Marker font
             ctx.font = "bold 90px 'Permanent Marker', sans-serif";
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            
-            // Warning color text with heavy shadow blur for glow effect
             ctx.shadowColor = '#ff3300'; ctx.shadowBlur = 40; ctx.fillStyle = '#ff5533';
             ctx.fillText("DO NOT", 256, 180); ctx.fillText("PUSH", 256, 330);
-
             return new THREE.CanvasTexture(c);
         };
 
@@ -558,9 +548,9 @@
             drawSmashText(smashDiffCanvas, smashEmCanvas); 
             smashTextDiffTex.needsUpdate = true;
             smashTextEmTex.needsUpdate = true;
-            
             drawNeonGraffiti(neonCanvas); 
             neonTex.needsUpdate = true;
+            donotPushButtonTex.needsUpdate = true;
         });
 
         const floorData = createGlowFloorTextures();
@@ -576,6 +566,8 @@
         const woodTex = createWoodenBoardTexture(); woodTex.wrapS=woodTex.wrapT=THREE.RepeatWrapping; woodTex.repeat.set(8,16);
         const rotWoodTex = createRottingWoodTexture(); rotWoodTex.wrapS=rotWoodTex.wrapT=THREE.RepeatWrapping; rotWoodTex.repeat.set(2,4);
         const marbleTex = createFleckedMarbleTexture(); marbleTex.wrapS=marbleTex.wrapT=THREE.RepeatWrapping; marbleTex.repeat.set(2,2);
+        
+        const doorTex = createSpeakeasyDoorTexture();
         const donotPushButtonTex = createDonotPushButtonTexture();
         
         const materials = {
@@ -619,10 +611,10 @@
             bottleBrown: new THREE.MeshStandardMaterial({color: 0x8b4513, roughness: 0.1, transparent: true, opacity: 0.6, metalness: 0.6}),
             bottleClear: new THREE.MeshStandardMaterial({color: 0xe0f7fa, roughness: 0.1, transparent: true, opacity: 0.6, metalness: 0.6}),
 
-            crateWood: new THREE.MeshStandardMaterial({map: rotWoodTex, color: 0x888888, roughness: 1.0, metalness: 0.0})
+            crateWood: new THREE.MeshStandardMaterial({map: rotWoodTex, color: 0x888888, roughness: 1.0, metalness: 0.0}),
+            speakeasyCanvas: new THREE.MeshStandardMaterial({map: doorTex, roughness: 0.9, metalness: 0.1})
         };
 
-        // define the flashing material for the button
         donotPushButtonMaterial = new THREE.MeshStandardMaterial({map: donotPushButtonTex, emissiveMap: donotPushButtonTex, emissive: 0xff3300, emissiveIntensity: 1.0, roughness: 0.5});
 
         // --- MAIN ROOM ARCHITECTURE ---
@@ -634,9 +626,8 @@
         const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); leftWall.position.set(-MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); leftWall.receiveShadow = true; leftWall.castShadow = true; mainWallGroup.add(leftWall);
         const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT+1, MAIN_ROOM_L), materials.wallWhite); rightWall.position.set(MAIN_ROOM_W/2, (ROOM_HEIGHT+1)/2, 0); rightWall.receiveShadow = true; rightWall.castShadow = true; mainWallGroup.add(rightWall);
         
-        // Setup Wall coordinates for the door placement
         const wallDepth = 0.5;
-        const whiteZ = -MAIN_ROOM_L/2 + (wallDepth / 2); // Center of the back wall (-29.75)
+        const whiteZ = -MAIN_ROOM_L/2 + (wallDepth / 2); 
         const mainBackW = (MAIN_ROOM_W - doorWidth) / 2; 
         
         const bWallL = new THREE.Mesh(new THREE.BoxGeometry(mainBackW, ROOM_HEIGHT+1, wallDepth), materials.wallWhite); bWallL.position.set(-(doorWidth/2 + mainBackW/2), (ROOM_HEIGHT+1)/2, whiteZ); bWallL.receiveShadow=true; bWallL.castShadow=true; mainWallGroup.add(bWallL);
@@ -644,7 +635,6 @@
         const doorLintelW = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, ROOM_HEIGHT+1-8, wallDepth), materials.wallWhite); doorLintelW.position.set(0, 8 + (ROOM_HEIGHT+1-8)/2, whiteZ); doorLintelW.receiveShadow=true; doorLintelW.castShadow=true; mainWallGroup.add(doorLintelW);
         scene.add(mainWallGroup);
 
-        // --- ALL-SKYLIGHT MAIN ROOM CEILING ---
         const ceilingGroup = new THREE.Group();
         const beamDepth = 0.8; const beamWidth = 0.6; const mainBeamSpacing = 6;
         const skylightWidth = 5; const centerCorridorWidth = 6;
@@ -663,10 +653,8 @@
         fullSkylightGlass.rotation.x = Math.PI/2; 
         fullSkylightGlass.position.set(0, ROOM_HEIGHT, 0); 
         ceilingGroup.add(fullSkylightGlass);
-        
         scene.add(ceilingGroup);
 
-        // --- THIN METAL FIXTURES ---
         const lightsGroup = new THREE.Group();
         function createLantern(zPos) {
             const fixture = new THREE.Group();
@@ -680,7 +668,6 @@
         for(let z = -MAIN_ROOM_L/2 + mainBeamSpacing; z < MAIN_ROOM_L/2; z += mainBeamSpacing*2) { lightsGroup.add(createLantern(z)); }
         scene.add(lightsGroup);
 
-        // --- WALL CANVASES ---
         function createWallCanvas(x, y, z, yRotation) {
             const group = new THREE.Group();
             const frame = new THREE.Mesh(new THREE.BoxGeometry(3.5, 2.5, 0.1), materials.frame); frame.castShadow=true; group.add(frame);
@@ -690,7 +677,6 @@
         for (let zPos = -25; zPos <= 25; zPos += 10) { createWallCanvas(-MAIN_ROOM_W/2+0.6, 3, zPos, Math.PI/2); createWallCanvas(MAIN_ROOM_W/2-0.6, 3, zPos, -Math.PI/2); }
         createWallCanvas(-8, 3, -MAIN_ROOM_L/2+0.6, 0); createWallCanvas(8, 3, -MAIN_ROOM_L/2+0.6, 0);
 
-        // --- MAIN ROOM STATUE & FENCE ---
         const centralGroup = new THREE.Group(); scene.add(centralGroup);
         const base1 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 8), materials.marble); base1.position.y = 0.2; base1.receiveShadow=true; centralGroup.add(base1);
         const base2 = new THREE.Mesh(new THREE.BoxGeometry(5, 0.4, 7), materials.marble); base2.position.y = 0.6; base2.receiveShadow=true; centralGroup.add(base2);
@@ -707,51 +693,40 @@
         function createRope(startVec, endVec) { const midVec = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5); midVec.y -= 0.3; const curve = new THREE.CatmullRomCurve3([startVec, midVec, endVec]); const rope = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.04, 8, false), materials.rope); rope.castShadow=true; fenceGroup.add(rope); }
         createRope(posts[0], posts[1]); createRope(posts[1], posts[2]); createRope(posts[2], posts[3]); createRope(posts[3], posts[0]); scene.add(fenceGroup);
 
-        // --- NEW: SPEAKEASY DOOR (BLENDS INTO WALL) ---
+        // --- HIDDEN SPEAKEASY DOOR ---
         const speakeasyDoorGroup = new THREE.Group();
-        // Hinge is positioned on the left side of the doorway, perfectly centered in the depth of the wall
         speakeasyDoorGroup.position.set(-doorWidth / 2, 4, whiteZ);
 
-        // Create door that has Main Room texture on front and Smash Room texture on back
         const doorDepth = wallDepth; 
         const doorMats = [
-            materials.wallWhite,  // right
-            materials.wallWhite,  // left
-            materials.wallWhite,  // top
-            materials.wallWhite,  // bottom
-            materials.wallWhite,  // front (+z) - Facing Main Room
-            materials.wallCement  // back (-z) - Facing Smash Room
+            materials.wallWhite,       
+            materials.wallWhite,       
+            materials.wallWhite,       
+            materials.wallWhite,       
+            materials.speakeasyCanvas, 
+            materials.wallCement       
         ];
 
-        // Door mesh slightly smaller than width to avoid scraping
         const hiddenDoorWidth = doorWidth - 0.05;
         const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(hiddenDoorWidth, 8.0, doorDepth), doorMats);
-        // Offset mesh so its left edge aligns exactly with the hinge origin
         doorMesh.position.set(hiddenDoorWidth / 2, 0, 0); 
         doorMesh.name = "SpeakeasyDoor";
         doorMesh.castShadow = true;
         speakeasyDoorGroup.add(doorMesh);
 
-        // --- ADD "DO NOT PUSH" BUTTON AND PICTURE FRAME DIRECTLY TO DOOR ---
-        // Put it near the right edge of the door
         const buttonLocalX = hiddenDoorWidth - 1.5; 
-        // Positioned in the vertical center (local Y = 0 is center of the 8.0 height)
         const buttonLocalY = 0; 
-        // Front face is at +doorDepth/2 (0.25). 
         const buttonFrontZ = doorDepth / 2;
 
-        // 1. Picture Frame 
         const frameWidth = 1.2;
         const frameDepth = 0.05;
         const buttonFrame = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, frameWidth, frameDepth), materials.frame);
-        // Sit flush against the front face
         buttonFrame.position.set(buttonLocalX, buttonLocalY, buttonFrontZ + (frameDepth / 2));
-        buttonFrame.name = "SpeakeasyDoor"; // Clicking frame opens door
+        buttonFrame.name = "DonotPushButton"; 
         speakeasyDoorGroup.add(buttonFrame);
 
-        // 2. The Flashing Button
         const btnWidth = 1.0;
-        const btnDepth = 0.06; // slightly deeper than frame so it sticks out
+        const btnDepth = 0.06; 
         const donotPushButtonMesh = new THREE.Mesh(new THREE.BoxGeometry(btnWidth, btnWidth, btnDepth), donotPushButtonMaterial);
         donotPushButtonMesh.position.set(buttonLocalX, buttonLocalY, buttonFrontZ + (btnDepth / 2));
         donotPushButtonMesh.name = "DonotPushButton";
@@ -773,7 +748,6 @@
         const sWallL = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallL.position.set(-SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallL.receiveShadow=true; sWallL.castShadow=true; smashGroup.add(sWallL);
         const sWallR = new THREE.Mesh(new THREE.BoxGeometry(1, ROOM_HEIGHT, SMASH_ROOM_L), materials.wallCement); sWallR.position.set(SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); sWallR.receiveShadow=true; sWallR.castShadow=true; smashGroup.add(sWallR);
         
-        // GIANT RIGHT WALL MURAL
         const rightWallMural = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), materials.muralSmiley);
         rightWallMural.position.set(SMASH_ROOM_W/2 - 0.51, ROOM_HEIGHT/2, SMASH_Z);
         rightWallMural.rotation.y = -Math.PI / 2;
@@ -788,14 +762,12 @@
         neonSignMesh.rotation.y = Math.PI / 2;
         smashGroup.add(neonSignMesh);
 
-        // --- SOLID CEILING FOR SMASH ROOM ---
         const smashCeiling = new THREE.Mesh(new THREE.BoxGeometry(SMASH_ROOM_W, 1, SMASH_ROOM_L), materials.ceiling);
         smashCeiling.position.set(0, ROOM_HEIGHT + 0.5, SMASH_Z); 
         smashCeiling.castShadow = true;
         smashCeiling.receiveShadow = true;
         smashGroup.add(smashCeiling);
 
-        // --- OPTIMIZED HANGING NEON LIGHTS ---
         function createNeonLight(x, z, colorHex, rotY) {
             const fixture = new THREE.Group();
             const dropLen = 2.5; 
@@ -821,7 +793,6 @@
         smashGroup.add(createNeonLight(8, SMASH_Z + 8, 0x00ffff, -Math.PI / 8));   
         smashGroup.add(createNeonLight(0, SMASH_Z + 14, 0x0044ff, 0));             
 
-        // --- OPTIMIZED NEON WALL SCONCES ---
         function createNeonSconce(x, y, z, rotY, colorHex) {
             const fixture = new THREE.Group();
             
@@ -851,7 +822,6 @@
         createNeonSconce(halfW - 0.05, sconceY, SMASH_Z,      -Math.PI / 2, 0x00ff00); 
         createNeonSconce(halfW - 0.05, sconceY, SMASH_Z + 12, -Math.PI / 2, 0x00ffff); 
 
-        // --- MASSIVE GLOBAL SMASH ROOM LIGHTS ---
         const smashGlobalLight1 = new THREE.PointLight(0xff00ff, 5.0, 90);
         smashGlobalLight1.position.set(-15, 8, SMASH_Z);
         smashGroup.add(smashGlobalLight1);
@@ -870,7 +840,6 @@
 
         scene.add(smashGroup);
 
-        // Physics Boundaries
         const wallBoundMass = 0;
         const wbL = new CANNON.Body({mass: wallBoundMass, shape: new CANNON.Box(new CANNON.Vec3(0.5, ROOM_HEIGHT/2, MAIN_ROOM_L/2))}); wbL.position.set(-MAIN_ROOM_W/2, ROOM_HEIGHT/2, 0); world.addBody(wbL);
         const wbR = new CANNON.Body({mass: wallBoundMass, shape: new CANNON.Box(new CANNON.Vec3(0.5, ROOM_HEIGHT/2, MAIN_ROOM_L/2))}); wbR.position.set(MAIN_ROOM_W/2, ROOM_HEIGHT/2, 0); world.addBody(wbR);
@@ -878,14 +847,9 @@
         const sbR = new CANNON.Body({mass: wallBoundMass, shape: new CANNON.Box(new CANNON.Vec3(0.5, ROOM_HEIGHT/2, SMASH_ROOM_L/2))}); sbR.position.set(SMASH_ROOM_W/2, ROOM_HEIGHT/2, SMASH_Z); world.addBody(sbR);
         const sbB = new CANNON.Body({mass: wallBoundMass, shape: new CANNON.Box(new CANNON.Vec3(SMASH_ROOM_W/2, ROOM_HEIGHT/2, 0.5))}); sbB.position.set(0, ROOM_HEIGHT/2, SMASH_Z - SMASH_ROOM_L/2); world.addBody(sbB);
 
-        // --- SMASHABLE CONTENTS ---
-        function registerPhysicsPieceGroup(obj3D, shape, mass, position, eulerRot = null) {
+        function registerPhysicsPieceGroup(obj3D, shape, mass, position, eulerRot = null, isFragile = false, shardMat = null) {
             obj3D.position.copy(position);
             if (eulerRot) obj3D.rotation.set(eulerRot.x, eulerRot.y, eulerRot.z);
-            
-            obj3D.traverse((child) => {
-                // Shadows disabled on debris objects
-            });
             scene.add(obj3D);
             
             const body = new CANNON.Body({ mass: mass, shape: shape, material: defaultMaterial });
@@ -896,10 +860,10 @@
             }
             if (mass > 0) { body.allowSleep = true; body.sleep(); }
             world.addBody(body);
-            physicsObjects.push({ mesh: obj3D, body: body });
+            
+            physicsObjects.push({ mesh: obj3D, body: body, isFragile: isFragile, shardMat: shardMat });
         }
 
-        // Ceramic Statues
         function createCurvedStatue(x, z) {
             const ped = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 2.5), materials.wallCement);
             ped.castShadow = true; ped.receiveShadow = true; 
@@ -908,17 +872,17 @@
             let currY = 1.0;
             registerPhysicsPieceGroup(
                 new THREE.Mesh(new THREE.SphereGeometry(1.0, 32, 32).scale(1, 0.5, 1), materials.ceramic),
-                new CANNON.Box(new CANNON.Vec3(1.0, 0.5, 1.0)), 3, new THREE.Vector3(x, currY + 0.5, z)
+                new CANNON.Box(new CANNON.Vec3(1.0, 0.5, 1.0)), 3, new THREE.Vector3(x, currY + 0.5, z), null, true, materials.ceramic
             );
             currY += 1.0;
             registerPhysicsPieceGroup(
                 new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.7, 2.0, 32), materials.ceramic),
-                new CANNON.Box(new CANNON.Vec3(0.5, 1.0, 0.5)), 2, new THREE.Vector3(x + 0.2, currY + 1.0, z - 0.2), new THREE.Euler(0.2, 0, -0.15) 
+                new CANNON.Box(new CANNON.Vec3(0.5, 1.0, 0.5)), 2, new THREE.Vector3(x + 0.2, currY + 1.0, z - 0.2), new THREE.Euler(0.2, 0, -0.15), true, materials.ceramic 
             );
             currY += 1.8;
             registerPhysicsPieceGroup(
                 new THREE.Mesh(new THREE.TorusKnotGeometry(0.6, 0.25, 64, 16), materials.ceramic),
-                new CANNON.Sphere(0.85), 1, new THREE.Vector3(x, currY + 0.8, z), new THREE.Euler(Math.PI/4, Math.PI/6, 0)
+                new CANNON.Sphere(0.85), 1, new THREE.Vector3(x, currY + 0.8, z), new THREE.Euler(Math.PI/4, Math.PI/6, 0), true, materials.ceramic
             );
         }
 
@@ -933,7 +897,7 @@
                 registerPhysicsPieceGroup(
                     new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0).scale(1, height/size, 1), materials.ceramic),
                     new CANNON.Box(new CANNON.Vec3(size * 0.8, height, size * 0.8)),
-                    1.5, new THREE.Vector3(x, currY + height, z), new THREE.Euler(0, i * Math.PI/3, 0) 
+                    1.5, new THREE.Vector3(x, currY + height, z), new THREE.Euler(0, i * Math.PI/3, 0), true, materials.ceramic 
                 );
                 currY += height * 1.8;
             }
@@ -947,17 +911,17 @@
             let currY = 1.0;
             registerPhysicsPieceGroup(
                 new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32).scale(1, 0.75, 1), materials.ceramic),
-                new CANNON.Sphere(1.0), 3, new THREE.Vector3(x, currY + 0.9, z)
+                new CANNON.Sphere(1.0), 3, new THREE.Vector3(x, currY + 0.9, z), null, true, materials.ceramic
             );
             currY += 1.6;
             registerPhysicsPieceGroup(
                 new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.4, 1.5, 32), materials.ceramic),
-                new CANNON.Box(new CANNON.Vec3(0.6, 0.75, 0.6)), 2, new THREE.Vector3(x, currY + 0.75, z), new THREE.Euler(0.1, 0, 0.1) 
+                new CANNON.Box(new CANNON.Vec3(0.6, 0.75, 0.6)), 2, new THREE.Vector3(x, currY + 0.75, z), new THREE.Euler(0.1, 0, 0.1), true, materials.ceramic 
             );
             currY += 1.5;
             registerPhysicsPieceGroup(
                 new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.3, 32, 64), materials.ceramic),
-                new CANNON.Sphere(1.2), 1.5, new THREE.Vector3(x - 0.2, currY + 1.0, z), new THREE.Euler(Math.PI/6, Math.PI/3, 0)
+                new CANNON.Sphere(1.2), 1.5, new THREE.Vector3(x - 0.2, currY + 1.0, z), new THREE.Euler(Math.PI/6, Math.PI/3, 0), true, materials.ceramic
             );
         }
 
@@ -965,7 +929,6 @@
         createFacetedStatue(6, SMASH_Z + 6);
         createBalancedStatue(-16, SMASH_Z); 
 
-        // --- TOWERING PALLET STACKS WITH FIXED VASES ---
         function createBrokenPalletStack(x, z, rotY, addVases = false) {
             const cx = Math.cos(rotY);
             const cz = Math.sin(rotY);
@@ -1080,7 +1043,8 @@
                         new CANNON.Box(new CANNON.Vec3(maxWidth/2, totalHeight/2, maxWidth/2)), 
                         1.5 + Math.random(), 
                         new THREE.Vector3(vx, topSurfaceY + totalHeight/2, vz), 
-                        new THREE.Euler(0, Math.random() * Math.PI, 0)
+                        new THREE.Euler(0, Math.random() * Math.PI, 0),
+                        true, materials.ceramic
                     );
                 }
             }
@@ -1102,7 +1066,6 @@
         createBrokenPalletStack(12, SMASH_Z - 8, Math.PI / 2, true);   
         createBrokenPalletStack(-6, SMASH_Z + 10, -Math.PI / 3, false);
 
-        // --- REALISTIC E-WASTE BUILDERS ---
         function createRealisticCRT(x, y, z, rotY, screenTex) {
             const group = new THREE.Group();
             const casingMat = Math.random() > 0.5 ? materials.retroPlastic : materials.blackPlastic;
@@ -1132,8 +1095,6 @@
             registerPhysicsPieceGroup(group, new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2)), 5, new THREE.Vector3(x, y, z), new THREE.Euler(0, rotY, 0));
         }
 
-
-        // --- CORNER CLUMPED E-WASTE SCATTER ---
         const corners = [
             { cx: -15, cz: SMASH_Z - 15 }, 
             { cx:  15, cz: SMASH_Z - 15 }, 
@@ -1177,8 +1138,6 @@
             }
         });
 
-
-        // --- HANGING GLASS BOTTLES ---
         function createHangingBottle(x, z, dropLen) {
             const attachY = ROOM_HEIGHT; 
             const bottleY = attachY - dropLen;
@@ -1190,6 +1149,8 @@
             scene.add(stringMesh);
 
             const bGroup = new THREE.Group();
+            bGroup.userData = { isHangingBottle: true };
+
             const mats = [materials.bottleGreen, materials.bottleBrown, materials.bottleClear];
             const bMat = mats[Math.floor(Math.random() * mats.length)];
 
@@ -1200,17 +1161,26 @@
             const bTop = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.3, 16), bMat);
             bTop.position.y = 0.95; bGroup.add(bTop);
 
-            registerPhysicsPieceGroup(bGroup, new CANNON.Box(new CANNON.Vec3(0.24, 0.7, 0.24)), 1.0, new THREE.Vector3(x, bottleY, z));
+            registerPhysicsPieceGroup(bGroup, new CANNON.Box(new CANNON.Vec3(0.24, 0.7, 0.24)), 0, new THREE.Vector3(x, bottleY, z), null, true, bMat);
         }
 
-        for(let i=0; i < 15; i++) {
+        // --- NEW: SPAWN BOTTLES BUT AVOID DOORWAY ---
+        let bottlesSpawned = 0;
+        while(bottlesSpawned < 25) {
             const hx = (Math.random() - 0.5) * (SMASH_ROOM_W - 4);
             const hz = SMASH_Z + (Math.random() - 0.5) * (SMASH_ROOM_L - 4);
-            const drop = 2 + Math.random() * 6; 
-            createHangingBottle(hx, hz, drop);
+            
+            // Check if inside the doorway path (Width: -6 to 6, Depth: Front wall back to -35)
+            // SMASH_Z is -50. Front wall is at -30.
+            const isDoorwayPath = Math.abs(hx) < 6 && hz > (SMASH_Z + 5);
+            
+            if (!isDoorwayPath) {
+                const drop = 2 + Math.random() * 6; 
+                createHangingBottle(hx, hz, drop);
+                bottlesSpawned++;
+            }
         }
 
-        // --- Loop ---
         const clock = new THREE.Clock();
         const velocity = new THREE.Vector3(); 
         const direction = new THREE.Vector3();
@@ -1220,7 +1190,6 @@
             const delta = Math.min(clock.getDelta(), 0.1);
             const time = clock.getElapsedTime();
 
-            // Smooth Room Transition
             const inMainRoom = camera.position.z > -30;
             const targetBgColor = inMainRoom ? colorDay : colorDark;
             const targetHemiIntensity = inMainRoom ? 0.6 : 0.45;
@@ -1234,16 +1203,16 @@
             hemiLight.intensity += (targetHemiIntensity - hemiLight.intensity) * 0.05;
 
             materials.neonSign.emissiveIntensity = Math.abs(Math.sin(time * 3)) * 0.8 + 0.4;
-            
-            // ANIMATE "DO NOT PUSH" BUTTON FLASHING
             donotPushButtonMaterial.emissiveIntensity = Math.max(0.0, Math.sin(time * 6)) * 2.0 + 0.5;
             
-            // Animate Speakeasy Door swing
             speakeasyDoorGroup.rotation.y += (doorRotationTarget - speakeasyDoorGroup.rotation.y) * 0.1;
 
             if (controls.isLocked === true) {
                 world.step(1/60, delta, 3);
-                for (const obj of physicsObjects) { obj.mesh.position.copy(obj.body.position); obj.mesh.quaternion.copy(obj.body.quaternion); }
+                for (const obj of physicsObjects) { 
+                    obj.mesh.position.copy(obj.body.position); 
+                    obj.mesh.quaternion.copy(obj.body.quaternion); 
+                }
 
                 velocity.x -= velocity.x * 10.0 * delta; 
                 velocity.z -= velocity.z * 10.0 * delta;
@@ -1262,7 +1231,6 @@
                 let cz = camera.position.z;
                 const doorZ = -MAIN_ROOM_L/2;
 
-                // Collision with Speakeasy Door Logic
                 if (cz > doorZ) { 
                     cx = THREE.MathUtils.clamp(cx, -MAIN_ROOM_W/2+1, MAIN_ROOM_W/2-1);
                     if (isDoorOpen && Math.abs(cx) < (doorWidth/2 - 1)) {
@@ -1281,7 +1249,11 @@
                 
                 camera.position.x = cx;
                 camera.position.z = cz;
-                camera.position.y = 1.7; 
+                
+                if (moveState.up) cameraHeight += 4.0 * delta;
+                if (moveState.down) cameraHeight -= 4.0 * delta;
+                cameraHeight = THREE.MathUtils.clamp(cameraHeight, 0.2, ROOM_HEIGHT - 0.5);
+                camera.position.y = cameraHeight; 
             }
             renderer.render(scene, camera);
         }
