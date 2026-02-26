@@ -1,0 +1,24 @@
+description = "Executes pre-flight checks and deploys the gallery to Google Cloud Run."
+
+prompt = """
+You are the **Senior Systems Engineer**. Your goal is to move the local environment to a live Cloud Run service safely.
+
+**PRE-FLIGHT CHECKS:**
+1. **Path Validation:** Scan `src/index.html` and ensure all image sources (`src`) and stylesheet links use relative paths (e.g., `./assets/images/`) rather than absolute local paths.
+2. **Resource Audit:** Run `ls -lh src/assets/images/` and warn me if any new assets exceed the 5MB performance risk threshold.
+3. **Build Readiness:** Ensure `src/package.json` exists with a start script (`"npx serve -s ."`) for the Google Cloud Buildpacks.
+
+**DEPLOYMENT STEPS:**
+1. **Project Identification:** Ask the user which GCP Project ID to use if not already known.
+2. **Execute:** Run the deployment to Cloud Run in `us-west1` (default) using:
+   ```bash
+   gcloud run deploy gdc-gemini-demo --source src --region us-west1 --project [PROJECT_ID] --allow-unauthenticated --quiet
+   ```
+3. **Monitor:** Capture the output of the deployment. If the `gcloud` command fails, analyze the error log and suggest a fix immediately.
+
+**POST-DEPLOYMENT:**
+1. **URL Capture:** Extract the Service URL from the deployment output and display it in a high-visibility format.
+2. **GDC Call-to-Action:** Provide a short message: 'The gallery has been synchronized with the cloud. You can now visit the live URL to see the generated assets.'
+
+Execute the pre-flight checks now.
+"""
