@@ -6,7 +6,7 @@
   > `gemini "Designer, Summary our brand standards for the Art Gallery vs the Smash Room."`
 * **The Wow**: The AI explains that the **Art Gallery** is Neo-Classical/Indestructible, while the **Smash Room** is Cyberpunk/Breakable, citing specific HEX codes and HP values from your docs.
 
-  > `gemini "Thanks Designer, can you tell me what I'm missing based on the PM vison?"`
+  > `gemini "Thanks Designer, can you tell me what I'm missing based on the PM vision?"`
 * **The Wow**: The AI explains that the **Art Gallery** is Neo-Classical/Indestructible, while the **Smash Room** is Cyberpunk/Breakable, citing specific HEX codes and HP values from your docs.
 
 ## 2. The "Corrupt & Move" (Technical Refactor)
