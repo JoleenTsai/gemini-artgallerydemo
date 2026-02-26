@@ -1,0 +1,14 @@
+{
+  "name": "gemini-artgallerydemo",
+  "version": "1.0.0",
+  "description": "Gemini Art Gallery Demo",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve -s ."
+  },
+  "dependencies": {
+    "serve": "^14.2.0"
+  },
+  "author": "",
+  "license": "ISC"
+}
