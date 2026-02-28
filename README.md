@@ -19,7 +19,6 @@
 * **Goal**: Generate a brand-compliant asset texture on the fly.
 * **Action**:
   > `gemini "Add a green felt sculpture to the main room."` May need to look around to find the sculpture.  
-  
   > `gemini "Curate a modern art painting and place within one of the canvas location on the left wall."`
 * **The Wow**: Gemini-CLI understand the code base, uses Nano Banana to generate the image asset, then places it within the code so that it renders within the art gallery.
 
