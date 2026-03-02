@@ -12,13 +12,13 @@
 ## 2. The "Corrupt & Move" (Technical Refactor)
 * **Goal**: Show real-time code manipulation and gameplay logic assignment.
 * **Action**:
+  > `gemini "Add a green felt sculpture to the main room next to the marble sculpture."` May need to look around to find the sculpture.  
   > `gemini "Move that sculpture to the Smash Room. Update its aesthetic to be 'Glitched' and make it breakable with 50HP."`
 * **The Wow**: The AI understands the code and moves the scultpure to `#smash-room`, swaps the CSS class to `breakable` with `health points`.
 
 ## 3. The Creative Loop (Nano Banana Integration)
 * **Goal**: Generate a brand-compliant asset texture on the fly.
 * **Action**:
-  > `gemini "Add a green felt sculpture to the main room next to the marble sculpture."` May need to look around to find the sculpture.  
   > `gemini "Curate a modern art painting and place within one of the canvas location on the left wall."`
 * **The Wow**: Gemini-CLI understand the code base, uses Nano Banana to generate the image asset, then places it within the code so that it renders within the art gallery.
 
