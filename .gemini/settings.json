@@ -1,11 +1,1 @@
-{
-  "mcp": {
-    "allowed": ["art-pipeline"]
-  },
-  "mcpServers": {
-    "art-pipeline": {
-      "command": "python3",
-      "args": ["tools/gen_nano.py"]
-    }
-  }
-}
+{}
