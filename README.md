@@ -99,3 +99,13 @@ You will need **Node.js** and **npm** installed on your machine.
   > `gemini "Ship it to Cloud Run."`
 * **The Result**: Gemini performs a pre-flight check, logs the changes in `DESIGN_HISTORY.md`, and deploys to Google Cloud Run, returning a live URL.
 
+<br>
+
+---
+
+## RESET DEMO ENVIRONMENT
+Run this command from the root directory
+```bash
+git restore .
+```
+
