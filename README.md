@@ -63,7 +63,7 @@ You will need **Node.js** and **npm** installed on your machine.
 
 ## 1. The Vision (Brand Alignment)
 * **Goal**: Show Gemini understands the "World Bible" (Wiki & PM Vision).
-* **Action**: 
+* **Command (type into gemini-cli)**:
   > `gemini "Summarize the brand standards for both rooms."`
 * **The Result**: Gemini explains the duality of the **Art Gallery** (Indestructible/Clean) vs. the **Smash Room** (Breakable/Glitched) using hex codes and HP values from your docs.
 
@@ -71,7 +71,7 @@ You will need **Node.js** and **npm** installed on your machine.
 
 ## 2. The Search (Asset Discovery)
 * **Goal**: Find and inject a 3D asset using Vertex AI Search.
-* **Action**:
+* **Command (type into gemini-cli)**:
   > `gemini "Find a marble bust and place it in the gallery."`
 * **The Result**: Gemini uses the `asset-search` skill to find a model and injects it into the code with the correct gallery-compliant tags (`class="hero"`, `99999 HP`).
 
@@ -79,7 +79,7 @@ You will need **Node.js** and **npm** installed on your machine.
 
 ## 3. The Curate (Generative Loop)
 * **Goal**: Generate a brand-compliant 2D painting on the fly.
-* **Action**:
+* **Command (type into gemini-cli)**:
   > `gemini "Curate a GCP-themed painting for the left wall."`
 * **The Result**: Gemini uses `asset-curator` to generate a unique image and updates the code to render it in a hero frame.
 
@@ -87,7 +87,7 @@ You will need **Node.js** and **npm** installed on your machine.
 
 ## 4. The Refactor
 * **Goal**: Move an asset and refactor its logic to match a new environment.
-* **Action**:
+* **Command (type into gemini-cli)**:
   > `gemini "Move the bust to the smash room and make it breakable."`
 * **The Result**: Gemini moves the asset to `#smash-room`, updates its class to `breakable`, sets HP to `50`, and applies the "Neon Corruption" glitch filter.
 
@@ -95,8 +95,8 @@ You will need **Node.js** and **npm** installed on your machine.
 
 ## 5. The Launch (Cloud Run)
 * **Goal**: Deploy the final build to the cloud.
-* **Action**:
-  > `gemini "Ship it to Cloud Run."`
+* **Command (type into gemini-cli)**:
+  > `/ship-it`
 * **The Result**: Gemini performs a pre-flight check, logs the changes in `DESIGN_HISTORY.md`, and deploys to Google Cloud Run, returning a live URL.
 
 <br>
