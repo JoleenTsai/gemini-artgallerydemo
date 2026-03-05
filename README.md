@@ -85,7 +85,7 @@ You will need **Node.js** and **npm** installed on your machine.
 
 <br>
 
-## 4. The Refactor (Vibe-to-Code)
+## 4. The Refactor
 * **Goal**: Move an asset and refactor its logic to match a new environment.
 * **Action**:
   > `gemini "Move the bust to the smash room and make it breakable."`
