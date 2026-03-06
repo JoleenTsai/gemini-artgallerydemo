@@ -104,8 +104,6 @@ You will need **Node.js** and **npm** installed on your machine.
 ---
 
 ## RESET DEMO ENVIRONMENT
-Run this command from the root directory
-```bash
-git restore .
-```
-
+Within Gemini-CLI, run this command:
+<br>
+`run git restore`
