@@ -4,7 +4,7 @@
   "description": "Gemini Art Gallery Demo",
   "main": "index.html",
   "scripts": {
-    "start": "npx serve -s ."
+    "start": "npx serve -s . -l 8000"
   },
   "dependencies": {
     "serve": "^14.2.0"
